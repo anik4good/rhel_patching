@@ -1,0 +1,133 @@
+---
+# Master RHEL Patching Playbook
+# This playbook is the main entry point for automated RHEL 8/9 patching
+# It detects the OS version, parses packages to patch, and delegates to
+# the appropriate rhel_patching role for actual patching operations
+#
+# Usage:
+#   ansible-playbook -i inventory master_patch.yaml -l uat_servers
+#   ansible-playbook -i inventory master_patch.yaml -l dr_servers
+#   ansible-playbook -i inventory master_patch.yaml -l prod_servers
+#
+# For single host testing:
+#   ansible-playbook -i inventory master_patch.yaml -l uat_servers --limit uat-rhel9-01.example.com
+
+- name: Master RHEL Patching Automation
+  hosts: all
+  gather_facts: true
+  become: true
+
+  vars:
+    # Package file containing RPM packages to patch
+    package_file: "{{ playbook_dir }}/packages_to_patch.txt"
+
+    # Directory for storing patch data and results
+    patch_data_dir: "{{ playbook_dir }}/patch_data"
+
+    # Detect environment from inventory hostname
+    # Extracts uat, dr, or prod from hostname pattern
+    environment_name: >-
+      {{ inventory_hostname.split('-')[0].split('_')[0] }}
+
+    # Timestamp for this patching run
+    timestamp: "{{ ansible_date_time.iso8601 }}"
+
+    # Output file for patch data
+    patch_data_file: >-
+      {{ patch_data_dir }}/{{ environment_name }}_{{ inventory_hostname }}_{{ ansible_distribution_major_version }}_{{ timestamp | regex_replace(':', '-') }}.json
+
+  pre_tasks:
+    - name: Display patching information banner
+      ansible.builtin.debug:
+        msg:
+          - "================================================================"
+          - "  RHEL Patching Automation - Master Patch Playbook"
+          - "================================================================"
+          - "  Target Host: {{ inventory_hostname }}"
+          - "  OS: {{ ansible_distribution }} {{ ansible_distribution_version }}"
+          - "  Major Version: {{ ansible_distribution_major_version }}"
+          - "  Architecture: {{ ansible_architecture }}"
+          - "  Environment: {{ environment_name }}"
+          - "  Timestamp: {{ ansible_date_time.iso8601 }}"
+          - "================================================================"
+
+    - name: Check if packages_to_patch.txt exists
+      ansible.builtin.stat:
+        path: "{{ package_file }}"
+      register: package_file_check
+      delegate_to: localhost
+      become: false
+
+    - name: Fail if package file doesn't exist
+      ansible.builtin.fail:
+        msg: "Package file not found: {{ package_file }}"
+      when: not package_file_check.stat.exists
+      delegate_to: localhost
+      become: false
+
+    - name: Parse packages using package_parser module
+      package_parser:
+        package_file: "{{ package_file }}"
+      register: parsed_packages
+      delegate_to: localhost
+      become: false
+
+    - name: Display package parsing summary
+      ansible.builtin.debug:
+        msg:
+          - "Package Parsing Summary:"
+          - "  Total packages found: {{ parsed_packages.package_count }}"
+          - "  Parsing errors: {{ parsed_packages.error_count }}"
+          - "  Architectures: {{ parsed_packages.summary.architectures | join(', ') }}"
+          - "  RHEL versions: {{ parsed_packages.summary.rhel_versions | join(', ') }}"
+      when: parsed_packages.summary is defined
+
+    - name: Display packages to be patched
+      ansible.builtin.debug:
+        msg: "{{ parsed_packages.packages | map(attribute='name') | unique | list }}"
+      when: parsed_packages.packages is defined
+
+    - name: Create patch_data directory structure
+      ansible.builtin.file:
+        path: "{{ patch_data_dir }}"
+        state: directory
+        mode: '0755'
+      delegate_to: localhost
+      become: false
+
+    - name: Initialize patch data dictionary
+      ansible.builtin.set_fact:
+        patch_data:
+          hostname: "{{ inventory_hostname }}"
+          environment: "{{ environment_name }}"
+          os_distribution: "{{ ansible_distribution }}"
+          os_version: "{{ ansible_distribution_version }}"
+          os_major_version: "{{ ansible_distribution_major_version }}"
+          architecture: "{{ ansible_architecture }}"
+          timestamp: "{{ ansible_date_time.iso8601 }}"
+          packages_to_patch: "{{ parsed_packages.packages }}"
+          package_count: "{{ parsed_packages.package_count }}"
+          status: "in_progress"
+
+  tasks:
+    - name: Include rhel_patching role for OS-specific patching
+      ansible.builtin.include_role:
+        name: rhel_patching
+      vars:
+        rhel_version: "{{ ansible_distribution_major_version }}"
+        packages: "{{ parsed_packages.packages }}"
+        output_file: "{{ patch_data_file }}"
+
+  post_tasks:
+    - name: Display patching completion message
+      ansible.builtin.debug:
+        msg:
+          - "================================================================"
+          - "  Patching Run Completed for {{ inventory_hostname }}"
+          - "================================================================"
+          - "  Environment: {{ environment_name }}"
+          - "  RHEL Version: {{ ansible_distribution_major_version }}"
+          - "  Packages processed: {{ parsed_packages.package_count }}"
+          - "  Data file: {{ patch_data_file }}"
+          - "  Timestamp: {{ ansible_date_time.iso8601 }}"
+          - "================================================================"
