@@ -1,0 +1,169 @@
+---
+# Package processing tasks
+# This file handles individual package installation with backup and verification
+
+- name: Query current package version
+  ansible.builtin.command: "rpm -q {{ package_name }}"
+  register: current_package_check
+  failed_when: false
+  changed_when: false
+
+- name: Set current package version or mark as not installed
+  ansible.builtin.set_fact:
+    current_package_version: >-
+      {{ current_package_check.stdout | regex_replace('^' + package_name + '-', '')
+         if current_package_check.rc == 0 else 'not installed' }}
+
+- name: Get current version string (without architecture)
+  ansible.builtin.set_fact:
+    current_version_string: >-
+      {{ current_package_version | regex_replace('\.' + package_arch + '$', '')
+         if current_package_version != 'not installed' else 'not installed' }}
+
+- name: Display package comparison header
+  ansible.builtin.debug:
+    msg:
+      - "================================================================"
+      - "  Package: {{ package_name }}"
+      - "================================================================"
+      - "  Current Version: {{ current_version_string }}"
+      - "  Target Version:  {{ package_version }}"
+      - "  Architecture:    {{ package_arch }}"
+      - "================================================================"
+
+- name: Backup current RPM if installed
+  block:
+    - name: Find current RPM in /var/lib/rpm
+      ansible.builtin.find:
+        paths: /var/lib/rpm
+        patterns: "{{ package_name }}-*.rpm"
+      register: rpm_backup_source
+      failed_when: false
+
+    - name: Copy RPM to backup directory
+      ansible.builtin.copy:
+        src: "{{ item.path }}"
+        dest: "{{ rpm_backup_dir }}/"
+        mode: '0644'
+        remote_src: true
+      loop: "{{ rpm_backup_source.files }}"
+      loop_control:
+        label: "{{ item.path | basename }}"
+      when: rpm_backup_source.files | length > 0
+
+    - name: Display backup status
+      ansible.builtin.debug:
+        msg: "RPM backed up to {{ rpm_backup_dir }}/{{ item.path | basename }}"
+      loop: "{{ rpm_backup_source.files }}"
+      loop_control:
+        label: "{{ item.path | basename }}"
+      when: rpm_backup_source.files | length > 0
+  when: current_package_check.rc == 0
+
+- name: Initialize package result
+  ansible.builtin.set_fact:
+    package_result:
+      name: "{{ package_name }}"
+      current_version: "{{ current_version_string }}"
+      target_version: "{{ package_version }}"
+      architecture: "{{ package_arch }}"
+      status: "pending"
+      backup_created: "{{ rpm_backup_source.matched > 0 if current_package_check.rc == 0 else false }}"
+      timestamp: "{{ ansible_date_time.iso8601 }}"
+
+- name: Prompt for package installation confirmation
+  ansible.builtin.pause:
+    prompt: "Install {{ package_name }}-{{ package_version }}.{{ package_arch }}? (yes/no)"
+  register: install_prompt
+
+- name: Set installation confirmation
+  ansible.builtin.set_fact:
+    install_confirmed: "{{ install_prompt.user_input | lower == 'yes' }}"
+
+- name: Skip package installation
+  ansible.builtin.set_fact:
+    package_result:
+      name: "{{ package_result.name }}"
+      current_version: "{{ package_result.current_version }}"
+      target_version: "{{ package_result.target_version }}"
+      architecture: "{{ package_result.architecture }}"
+      status: "skipped"
+      backup_created: "{{ package_result.backup_created }}"
+      timestamp: "{{ package_result.timestamp }}"
+      message: "Installation skipped by user"
+  when: not install_confirmed
+
+- name: Display skip message
+  ansible.builtin.debug:
+    msg: "Skipping installation of {{ package_name }}"
+  when: not install_confirmed
+
+- name: Install package from jump server repository
+  ansible.builtin.dnf:
+    name: "{{ package_name }}-{{ package_version }}.{{ package_arch }}"
+    state: present
+    disable_gpg_check: true
+  register: package_install
+  when: install_confirmed
+
+- name: Verify package installation
+  ansible.builtin.command: "rpm -q {{ package_name }}-{{ package_version }}.{{ package_arch }}"
+  register: package_verify
+  failed_when: false
+  changed_when: false
+  when: install_confirmed
+
+- name: Update result status to installed
+  ansible.builtin.set_fact:
+    package_result:
+      name: "{{ package_result.name }}"
+      current_version: "{{ package_version }}"
+      target_version: "{{ package_result.target_version }}"
+      architecture: "{{ package_result.architecture }}"
+      status: "installed"
+      backup_created: "{{ package_result.backup_created }}"
+      timestamp: "{{ package_result.timestamp }}"
+      message: "Successfully installed"
+  when:
+    - install_confirmed
+    - package_verify.rc == 0
+
+- name: Update result status to failed
+  ansible.builtin.set_fact:
+    package_result:
+      name: "{{ package_result.name }}"
+      current_version: "{{ package_result.current_version }}"
+      target_version: "{{ package_result.target_version }}"
+      architecture: "{{ package_result.architecture }}"
+      status: "failed"
+      backup_created: "{{ package_result.backup_created }}"
+      timestamp: "{{ package_result.timestamp }}"
+      error_message: "{{ package_install.msg | default('Installation failed') }}"
+  when:
+    - install_confirmed
+    - package_verify.rc != 0
+
+- name: Display installation result
+  ansible.builtin.debug:
+    msg:
+      - "================================================================"
+      - "  Installation Result: {{ package_result.name }}"
+      - "================================================================"
+      - "  Status: {{ package_result.status | upper }}"
+      - "  Current: {{ package_result.current_version }}"
+      - "  Target:  {{ package_result.target_version }}"
+      - "  Message: {{ package_result.message | default(package_result.error_message | default('N/A')) }}"
+      - "================================================================"
+  when: install_confirmed
+
+- name: Add package result to patching results
+  ansible.builtin.set_fact:
+    patching_results:
+      hostname: "{{ patching_results.hostname }}"
+      ip: "{{ patching_results.ip }}"
+      environment: "{{ patching_results.environment }}"
+      rhel_version: "{{ patching_results.rhel_version }}"
+      kernel: "{{ patching_results.kernel }}"
+      duration: "{{ patching_results.duration }}"
+      status: "{{ patching_results.status }}"
+      patches: "{{ patching_results.patches + [package_result] }}"

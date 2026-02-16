@@ -1,0 +1,11 @@
+---
+# Default variables for RHEL patching role
+
+# Directory for backing up RPMs before patching
+rpm_backup_dir: /var/lib/rpmbackup
+
+# Enable repository connectivity check before patching
+repo_check_enabled: true
+
+# Enable interactive reboot prompt after patching
+reboot_prompt_enabled: true

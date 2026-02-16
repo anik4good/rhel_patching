@@ -1,0 +1,16 @@
+---
+# Main task file for RHEL patching role
+# This file routes to OS-specific patching tasks based on RHEL version
+
+- name: Include RHEL 9 specific patching tasks
+  ansible.builtin.include_tasks: rhel9.yml
+  when: rhel_version == '9'
+
+- name: Include RHEL 8 specific patching tasks
+  ansible.builtin.include_tasks: rhel8.yml
+  when: rhel_version == '8'
+
+- name: Fail on unsupported RHEL version
+  ansible.builtin.fail:
+    msg: "Unsupported RHEL version: {{ rhel_version }}. Only RHEL 8 and 9 are supported."
+  when: rhel_version not in ['8', '9']

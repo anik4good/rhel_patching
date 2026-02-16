@@ -1,0 +1,136 @@
+---
+# RHEL 9 specific patching tasks
+# This playbook handles the complete patching workflow for RHEL 9 systems
+
+- name: Start timer for patching duration tracking
+  ansible.builtin.set_fact:
+    patch_start_time: "{{ ansible_date_time.epoch }}"
+
+- name: Verify jump server repository is accessible
+  ansible.builtin.command: dnf repolist
+  register: repo_check
+  changed_when: false
+  when: repo_check_enabled | bool
+
+- name: Display repository status
+  ansible.builtin.debug:
+    msg: "Repository check: {{ 'PASSED' if repo_check.rc == 0 else 'FAILED' }}"
+  when: repo_check_enabled | bool
+
+- name: Fail if repository is not accessible
+  ansible.builtin.fail:
+    msg: "Cannot access jump server repository. Please check network connectivity and repository configuration."
+  when:
+    - repo_check_enabled | bool
+    - repo_check.rc != 0
+
+- name: Create RPM backup directory
+  ansible.builtin.file:
+    path: "{{ rpm_backup_dir }}"
+    state: directory
+    mode: '0755'
+
+- name: Get current kernel version
+  ansible.builtin.command: uname -r
+  register: current_kernel
+  changed_when: false
+
+- name: Initialize patching results structure
+  ansible.builtin.set_fact:
+    patching_results:
+      hostname: "{{ inventory_hostname }}"
+      ip: "{{ ansible_default_ipv4.address | default('unknown') }}"
+      environment: "{{ environment_name }}"
+      rhel_version: "{{ rhel_version }}"
+      kernel: "{{ current_kernel.stdout }}"
+      duration: ""
+      status: "in_progress"
+      patches: []
+
+- name: Display patching session information
+  ansible.builtin.debug:
+    msg:
+      - "================================================================"
+      - "  RHEL {{ rhel_version }} Patching Session"
+      - "================================================================"
+      - "  Hostname: {{ inventory_hostname }}"
+      - "  IP Address: {{ ansible_default_ipv4.address | default('unknown') }}"
+      - "  Environment: {{ environment_name }}"
+      - "  Current Kernel: {{ current_kernel.stdout }}"
+      - "  Packages to patch: {{ packages | length }}"
+      - "================================================================"
+
+- name: Process each package for patching
+  ansible.builtin.include_tasks: process_package.yml
+  loop: "{{ packages }}"
+  loop_control:
+    loop_var: package_item
+  vars:
+    package_name: "{{ package_item.name }}"
+    package_version: "{{ package_item.version }}"
+    package_arch: "{{ package_item.arch | default('noarch') }}"
+
+- name: Calculate patching duration
+  ansible.builtin.set_fact:
+    patch_end_time: "{{ ansible_date_time.epoch }}"
+    patch_duration_seconds: "{{ ansible_date_time.epoch | int - patch_start_time | int }}"
+
+- name: Format duration in minutes and seconds
+  ansible.builtin.set_fact:
+    formatted_duration: >-
+      {% set minutes = (patch_duration_seconds | int // 60) %}
+      {% set seconds = (patch_duration_seconds | int % 60) %}
+      {{ minutes }}m {{ seconds }}s
+
+- name: Update final results with duration and status
+  ansible.builtin.set_fact:
+    patching_results:
+      hostname: "{{ patching_results.hostname }}"
+      ip: "{{ patching_results.ip }}"
+      environment: "{{ patching_results.environment }}"
+      rhel_version: "{{ patching_results.rhel_version }}"
+      kernel: "{{ patching_results.kernel }}"
+      duration: "{{ formatted_duration }}"
+      status: "{{ 'completed' if patching_results.patches | selectattr('status', 'equalto', 'failed') | list | length == 0 else 'partial_failure' }}"
+      patches: "{{ patching_results.patches }}"
+
+- name: Display patching summary
+  ansible.builtin.debug:
+    msg:
+      - "================================================================"
+      - "  Patching Summary for {{ inventory_hostname }}"
+      - "================================================================"
+      - "  Total packages processed: {{ patching_results.patches | length }}"
+      - "  Successfully installed: {{ patching_results.patches | selectattr('status', 'equalto', 'installed') | list | length }}"
+      - "  Failed installations: {{ patching_results.patches | selectattr('status', 'equalto', 'failed') | list | length }}"
+      - "  Skipped: {{ patching_results.patches | selectattr('status', 'equalto', 'skipped') | list | length }}"
+      - "  Duration: {{ formatted_duration }}"
+      - "  Status: {{ patching_results.status }}"
+      - "================================================================"
+
+- name: Save results to JSON file on control node
+  ansible.builtin.copy:
+    content: "{{ patching_results | to_nice_json(indent=2) }}"
+    dest: "{{ output_file }}"
+    mode: '0644'
+  delegate_to: localhost
+  become: false
+
+- name: Display results file location
+  ansible.builtin.debug:
+    msg: "Patching results saved to: {{ output_file }}"
+
+- name: Prompt for system reboot
+  ansible.builtin.pause:
+    prompt: "Patching completed. Do you want to reboot the system now? (yes/no)"
+  register: reboot_prompt
+  when: reboot_prompt_enabled | bool
+
+- name: Reboot system if confirmed
+  ansible.builtin.reboot:
+    reboot_timeout: 600
+    pre_reboot_delay: 10
+    post_reboot_delay: 30
+  when:
+    - reboot_prompt_enabled | bool
+    - reboot_prompt.user_input | lower == 'yes'
