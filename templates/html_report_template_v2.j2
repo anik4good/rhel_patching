@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>RHEL Patching Report</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; font-size: 14px; }
+        .container { max-width: 1400px; margin: 0 auto; background: white; padding: 20px; border: 1px solid #ddd; }
+        h1 { color: #333; border-bottom: 3px solid #0066cc; padding-bottom: 10px; }
+        h2 { color: #555; margin-top: 30px; border-bottom: 1px solid #ddd; padding-bottom: 5px; }
+        h3 { color: #666; margin-top: 20px; }
+        .metadata { background: #f0f0f0; padding: 12px; margin: 10px 0; font-size: 13px; border-left: 4px solid #0066cc; }
+        .summary-table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 13px; }
+        .summary-table th, .summary-table td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+        .summary-table th { background: #0066cc; color: white; font-weight: bold; }
+        .summary-table tr:nth-child(even) { background: #f9f9f9; }
+        .status-success { color: #008000; font-weight: bold; }
+        .status-failed { color: #cc0000; font-weight: bold; }
+        .status-pending { color: #ff8c00; font-weight: bold; }
+        .env-section { margin: 30px 0; border: 1px solid #ccc; padding: 0; }
+        .env-header { background: #333; color: white; padding: 12px; font-weight: bold; font-size: 16px; }
+        .server-section { margin: 20px; border: 1px solid #ddd; }
+        .server-header { background: #e8f4ff; padding: 10px; font-weight: bold; color: #0066cc; }
+        .patch-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
+        .patch-table th { background: #666; color: white; padding: 8px; text-align: left; border: 1px solid #444; }
+        .patch-table td { border: 1px solid #ddd; padding: 8px; }
+        .patch-table tr:nth-child(even) { background: #f5f5f5; }
+        .version-before { color: #cc0000; }
+        .version-after { color: #008000; font-weight: bold; }
+        .arrow { color: #0066cc; font-weight: bold; }
+        .kernel-row { background: #fff4e6; font-weight: bold; }
+        .security-row { background: #ffe6e6; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🐴 RHEL Security Patching Report</h1>
+
+        <div class="metadata">
+            <strong>Generated:</strong> {{ timestamp }} |
+            <strong>Execution ID:</strong> {{ execution_id }} |
+            <strong>Total Duration:</strong> {{ total_duration }} |
+            <strong>Workflow:</strong> UAT → DR → PROD
+        </div>
+
+        <h2>Summary</h2>
+        <table class="summary-table">
+            <tr>
+                <th>Environment</th>
+                <th>Servers</th>
+                <th>Success</th>
+                <th>Failed</th>
+                <th>Patches Applied</th>
+                <th>Kernel Updates</th>
+                <th>Security Updates</th>
+                <th>Status</th>
+            </tr>
+            {% for env in environments %}
+            <tr>
+                <td><strong>{{ env.name | upper }}</strong></td>
+                <td>{{ env.total }}</td>
+                <td>{{ env.success }}</td>
+                <td>{{ env.failed }}</td>
+                <td>{{ env.patches_applied }}</td>
+                <td>{{ env.kernel_updates }}</td>
+                <td>{{ env.security_updates }}</td>
+                <td>
+                    {% if env.failed > 0 %}
+                        <span class="status-failed">FAILED</span>
+                    {% elif env.pending > 0 %}
+                        <span class="status-pending">IN PROGRESS</span>
+                    {% else %}
+                        <span class="status-success">COMPLETE</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+            <tr style="background: #e6f2ff; font-weight: bold;">
+                <td>TOTAL</td>
+                <td>{{ total_servers }}</td>
+                <td>{{ total_success }}</td>
+                <td>{{ total_failed }}</td>
+                <td>{{ total_patches }}</td>
+                <td>{{ total_kernel_updates }}</td>
+                <td>{{ total_security_updates }}</td>
+                <td>{{ completion_percent }}% Complete</td>
+            </tr>
+        </table>
+
+        {% for env in environments %}
+        <div class="env-section">
+            <div class="env-header">
+                {{ env.name | upper }} Environment ({{ env.total }} servers) - {{ env.patches_applied }} patches applied
+            </div>
+
+            {% for server in env.servers %}
+            <div class="server-section">
+                <div class="server-header">
+                    📡 {{ server.hostname }} ({{ server.ip }})
+                    <span style="float: right; font-weight: normal; font-size: 12px;">
+                        Duration: {{ server.duration }} | Status:
+                        {% if server.status == 'success' %}
+                            <span class="status-success">SUCCESS</span>
+                        {% elif server.status == 'failed' %}
+                            <span class="status-failed">FAILED</span>
+                        {% else %}
+                            <span class="status-pending">{{ server.status | upper }}</span>
+                        {% endif %}
+                    </span>
+                </div>
+
+                {% if server.patches %}
+                <table class="patch-table">
+                    <tr>
+                        <th style="width: 25%">Package Name</th>
+                        <th style="width: 20%">Version Before</th>
+                        <th style="width: 5%"></th>
+                        <th style="width: 20%">Version After</th>
+                        <th style="width: 10%">Type</th>
+                        <th style="width: 20%">Repository</th>
+                    </tr>
+                    {% for patch in server.patches %}
+                    <tr{% if patch.type == 'kernel' %} class="kernel-row"{% elif patch.type == 'security' %} class="security-row"{% endif %}>
+                        <td><strong>{{ patch.name }}</strong></td>
+                        <td class="version-before">{{ patch.before }}</td>
+                        <td class="arrow">→</td>
+                        <td class="version-after">{{ patch.after }}</td>
+                        <td>{{ patch.type | upper }}</td>
+                        <td>{{ patch.repo }}</td>
+                    </tr>
+                    {% endfor %}
+                </table>
+                {% else %}
+                <p style="padding: 10px; color: #666;">No patches recorded for this server.</p>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% endfor %}
+
+        <div class="metadata" style="margin-top: 30px;">
+            <strong>Generated by:</strong> Ansible RHEL Patching Automation |
+            <strong>Contact:</strong> {{ admin_email | default('admin@example.com') }} |
+            <strong>Patching Source:</strong> Jump Server Repository
+        </div>
+    </div>
+</body>
+</html>

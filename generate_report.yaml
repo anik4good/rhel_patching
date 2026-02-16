@@ -1,0 +1,221 @@
+---
+# Generate HTML Report from Patching JSON Results
+# This playbook reads JSON result files from patch_data/ and generates an HTML report
+#
+# Usage:
+#   ansible-playbook generate_report.yaml -e environment=uat
+#   ansible-playbook generate_report.yaml -e environment=prod
+#   ansible-playbook generate_report.yaml -e environment=dr
+
+- name: Generate RHEL Patching HTML Report
+  hosts: localhost
+  gather_facts: false
+  vars:
+    # Report configuration
+    report_dir: "{{ playbook_dir }}/reports"
+    patch_data_dir: "{{ playbook_dir }}/patch_data"
+    template_file: "{{ playbook_dir }}/templates/html_report_template_v2.j2"
+    admin_email: "admin@example.com"
+
+    # Get current timestamp
+    timestamp: "{{ lookup('pipe', 'date \"+%Y-%m-%d %H:%M:%S %Z\"') }}"
+    report_date: "{{ lookup('pipe', 'date +%Y-%m-%d') }}"
+
+    # Generate execution ID (8 character UUID)
+    execution_id: "{{ lookup('pipe', 'uuidgen | tr -d \\'-\\' | cut -c1-8') }}"
+
+    # Total duration (will be calculated from JSON timestamps if available)
+    total_duration: "TBD"
+
+  tasks:
+    - name: Display report generation banner
+      ansible.builtin.debug:
+        msg:
+          - "================================================================"
+          - "  RHEL Patching Report Generator"
+          - "================================================================"
+          - "  Environment: {{ environment | default('ALL') }}"
+          - "  Report Date: {{ report_date }}"
+          - "  Execution ID: {{ execution_id }}"
+          - "================================================================"
+
+    - name: Validate environment variable is provided
+      ansible.builtin.fail:
+        msg: "Please provide an environment variable. Usage: -e environment=uat|dr|prod"
+      when: environment is not defined
+
+    - name: Check if patch_data directory exists
+      ansible.builtin.stat:
+        path: "{{ patch_data_dir }}"
+      register: patch_data_check
+
+    - name: Fail if patch_data directory doesn't exist
+      ansible.builtin.fail:
+        msg: "Patch data directory not found: {{ patch_data_dir }}. Please run the patching playbook first."
+      when: not patch_data_check.stat.exists
+
+    - name: Find JSON result files for specified environment
+      ansible.builtin.find:
+        paths: "{{ patch_data_dir }}"
+        patterns: "{{ environment }}_*.json"
+        file_type: file
+      register: json_files
+
+    - name: Display JSON files found
+      ansible.builtin.debug:
+        msg: "Found {{ json_files.matched }} JSON file(s) for environment: {{ environment }}"
+
+    - name: Fail if no JSON files found
+      ansible.builtin.fail:
+        msg: "No JSON files found for environment '{{ environment }}' in {{ patch_data_dir }}. Please run the patching playbook first."
+      when: json_files.matched == 0
+
+    - name: Initialize empty lists
+      ansible.builtin.set_fact:
+        server_list: []
+
+    - name: Process JSON files - read content
+      ansible.builtin.set_fact:
+        server_data: "{{ lookup('file', item.path) | from_json }}"
+        cacheable: false
+      register: parsed_servers
+      loop: "{{ json_files.files }}"
+      loop_control:
+        label: "{{ item.path | basename }}"
+
+    - name: Extract server data from parsed results
+      ansible.builtin.set_fact:
+        server_list: "{{ server_list + [item.ansible_facts.server_data] }}"
+      loop: "{{ parsed_servers.results }}"
+      loop_control:
+        label: "{{ item.ansible_facts.server_data.hostname | default('Unknown') }}"
+
+    - name: Initialize environment statistics
+      ansible.builtin.set_fact:
+        env_success: 0
+        env_failed: 0
+        env_pending: 0
+        env_total_patches: 0
+        env_kernel_updates: 0
+
+    - name: Calculate statistics and transform server data
+      ansible.builtin.set_fact:
+        # Transform each server's patch data to match template expectations
+        transformed_servers: >-
+          {% set servers = [] %}
+          {% for server in server_list %}
+          {%   set patches = [] %}
+          {%   set server_success = 0 %}
+          {%   for patch in server.patches %}
+          {%     if patch.status == 'installed' %}
+          {%       set patch_type = 'kernel' if patch.name is search('kernel') else 'security' %}
+          {%       set _ = patches.append({
+                    'name': patch.name,
+                    'before': patch.current_version,
+                    'after': patch.target_version,
+                    'type': patch_type,
+                    'repo': 'jump-server-repo'
+                  }) %}
+          {%     endif %}
+          {%   endfor %}
+          {%   set server_status = 'success' if server.status == 'completed' else ('failed' if server.status == 'partial_failure' else 'pending') %}
+          {%   set _ = servers.append({
+                 'hostname': server.hostname,
+                 'ip': server.ip | default('unknown'),
+                 'rhel_version': server.rhel_version,
+                 'kernel': server.kernel,
+                 'patches': patches,
+                 'duration': server.duration,
+                 'status': server_status
+               }) %}
+          {% endfor %}
+          {{ servers }}
+
+    - name: Calculate environment statistics
+      ansible.builtin.set_fact:
+        env_success: "{{ transformed_servers | selectattr('status', 'equalto', 'success') | list | length }}"
+        env_failed: "{{ transformed_servers | selectattr('status', 'equalto', 'failed') | list | length }}"
+        env_pending: "{{ transformed_servers | rejectattr('status', 'equalto', 'success') | rejectattr('status', 'equalto', 'failed') | list | length }}"
+
+    - name: Calculate patch statistics for environment
+      ansible.builtin.set_fact:
+        env_total_patches: >-
+          {% set total = 0 %}
+          {% for server in transformed_servers %}
+          {%   set _ = total.__add__(server.patches | length) %}
+          {% endfor %}
+          {{ total }}
+
+    - name: Calculate kernel update count
+      ansible.builtin.set_fact:
+        env_kernel_updates: >-
+          {% set total = 0 %}
+          {% for server in transformed_servers %}
+          {%   for patch in server.patches %}
+          {%     if patch.type == 'kernel' %}
+          {%       set _ = total.__add__(1) %}
+          {%     endif %}
+          {%   endfor %}
+          {% endfor %}
+          {{ total }}
+
+    - name: Build final environments data structure
+      ansible.builtin.set_fact:
+        environments:
+          - name: "{{ environment }}"
+            total: "{{ transformed_servers | length }}"
+            success: "{{ env_success | int }}"
+            failed: "{{ env_failed | int }}"
+            pending: "{{ env_pending | int }}"
+            patches_applied: "{{ env_total_patches | int }}"
+            kernel_updates: "{{ env_kernel_updates | int }}"
+            security_updates: "{{ env_total_patches | int }}"
+            servers: "{{ transformed_servers }}"
+
+    - name: Calculate totals across all environments
+      ansible.builtin.set_fact:
+        total_servers: "{{ environments | sum(attribute='total') }}"
+        total_success: "{{ environments | sum(attribute='success') }}"
+        total_failed: "{{ environments | sum(attribute='failed') }}"
+        total_patches: "{{ environments | sum(attribute='patches_applied') }}"
+        total_kernel_updates: "{{ environments | sum(attribute='kernel_updates') }}"
+        total_security_updates: "{{ environments | sum(attribute='security_updates') }}"
+
+    - name: Calculate completion percentage
+      ansible.builtin.set_fact:
+        completion_percent: >-
+          {% if total_servers | int > 0 %}
+          {{ ((total_success | int) / (total_servers | int) * 100) | round(2) }}
+          {% else %}
+          0.0
+          {% endif %}
+
+    - name: Create reports directory
+      ansible.builtin.file:
+        path: "{{ report_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Generate HTML report
+      ansible.builtin.template:
+        src: "{{ template_file }}"
+        dest: "{{ report_dir }}/{{ environment }}_patching_{{ report_date }}.html"
+        mode: '0644'
+
+    - name: Display report generation summary
+      ansible.builtin.debug:
+        msg:
+          - "================================================================"
+          - "  HTML REPORT GENERATED SUCCESSFULLY"
+          - "================================================================"
+          - "  Location: {{ report_dir }}/{{ environment }}_patching_{{ report_date }}.html"
+          - "  Environment: {{ environment | upper }}"
+          - "  Total Servers: {{ total_servers }}"
+          - "  Success: {{ total_success }}"
+          - "  Failed: {{ total_failed }}"
+          - "  Patches Applied: {{ total_patches }}"
+          - "  Completion: {{ completion_percent }}%"
+          - "  Execution ID: {{ execution_id }}"
+          - "================================================================"
+          - "  Open the HTML file in a browser to view the full report"
+          - "================================================================"
