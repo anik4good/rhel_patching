@@ -1,0 +1,69 @@
+# Ansible Inventory for RHEL Patching - Phased Rollout
+# Environment Groups for Week-wise Patching Strategy
+#
+# Week 1: UAT Environment
+# Week 2: DR Environment
+# Week 3: Production Environment
+#
+# Replace placeholder IPs with your actual server details
+
+# ============================================================================
+# UAT Environment - Week 1 Patching
+# ============================================================================
+[uat_servers]
+# uat-rhel8-01.example.com
+# uat-rhel8-02.example.com
+# uat-rhel9-01.example.com
+# uat-db-01.example.com
+# uat-app-01.example.com
+
+# ============================================================================
+# DR Environment - Week 2 Patching
+# ============================================================================
+[dr_servers]
+# dr-rhel8-01.example.com
+# dr-rhel8-02.example.com
+# dr-rhel9-01.example.com
+# dr-db-01.example.com
+# dr-app-01.example.com
+
+# ============================================================================
+# Production Environment - Week 3 Patching
+# ============================================================================
+[prod_servers]
+# prod-rhel8-01.example.com
+# prod-rhel8-02.example.com
+# prod-rhel9-01.example.com
+# prod-db-01.example.com
+# prod-app-01.example.com
+
+# ============================================================================
+# Legacy Group - All Servers (for backwards compatibility)
+# ============================================================================
+[rhel_servers:children]
+uat_servers
+dr_servers
+prod_servers
+
+# ============================================================================
+# Common Variables for All RHEL Servers
+# ============================================================================
+[rhel_servers:vars]
+# SSH connection settings
+ansible_user=ansible
+# ansible_ssh_private_key_file=~/.ssh/id_rsa_ansible
+
+# Privilege escalation
+ansible_become=true
+ansible_become_method=sudo
+# ansible_become_password={{ vault_sudo_password }}
+
+# Connection settings
+ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+# ansible_port=22
+
+# Patching-specific variables
+patching_reboot=true
+patching_reboot_timeout=600
+patching_pre_snapshots=true
+patching_report_dir=/tmp/rhel_patching_reports
