@@ -1,0 +1,283 @@
+---
+# Integration Test Suite for RHEL Patching Automation
+# This playbook verifies that all components of the patching system are correctly configured
+# and working together as expected.
+
+- name: RHEL Patching Automation - Integration Test Suite
+  hosts: localhost
+  gather_facts: false
+  vars:
+    project_root: "{{ lookup('env', 'PWD') }}"
+    module_path: "{{ project_root }}/library"
+    required_files:
+      - "{{ project_root }}/inventory"
+      - "{{ project_root }}/packages_to_patch.txt"
+      - "{{ project_root }}/master_patch.yaml"
+      - "{{ project_root }}/generate_report.yaml"
+      - "{{ project_root }}/library/package_parser.py"
+    playbooks_to_check:
+      - "{{ project_root }}/master_patch.yaml"
+      - "{{ project_root }}/generate_report.yaml"
+    test_results: {}
+    critical_failures: false
+
+  tasks:
+    - name: "=========================================="
+      ansible.builtin.debug:
+        msg: "=========================================="
+
+    - name: "Display test header"
+      ansible.builtin.debug:
+        msg: "  INTEGRATION TEST RESULTS"
+
+    - name: "=========================================="
+      ansible.builtin.debug:
+        msg: "=========================================="
+
+    # Test 1: Check if required files exist
+    - name: "TEST 1: Check if inventory file exists"
+      ansible.builtin.stat:
+        path: "{{ project_root }}/inventory"
+      register: inventory_file
+      ignore_errors: true
+
+    - name: "Store inventory file test result"
+      ansible.builtin.set_fact:
+        test_results: "{{ test_results | combine({'inventory_file': 'PASS' if inventory_file.stat.exists else 'FAIL'}) }}"
+      when: inventory_file.stat is defined
+
+    - name: "Store inventory file test result (failed)"
+      ansible.builtin.set_fact:
+        test_results: "{{ test_results | combine({'inventory_file': 'FAIL'}) }}"
+        critical_failures: true
+      when: inventory_file.stat is not defined or not inventory_file.stat.exists
+
+    - name: "Inventory file result"
+      ansible.builtin.debug:
+        msg: "Inventory file: {{ test_results.get('inventory_file', 'FAIL') }}"
+
+    # Test 2: Check packages_to_patch.txt exists
+    - name: "TEST 2: Check if packages_to_patch.txt exists"
+      ansible.builtin.stat:
+        path: "{{ project_root }}/packages_to_patch.txt"
+      register: package_file
+      ignore_errors: true
+
+    - name: "Store package file test result"
+      ansible.builtin.set_fact:
+        test_results: "{{ test_results | combine({'package_file': 'PASS' if package_file.stat.exists else 'FAIL'}) }}"
+      when: package_file.stat is defined
+
+    - name: "Store package file test result (failed)"
+      ansible.builtin.set_fact:
+        test_results: "{{ test_results | combine({'package_file': 'FAIL'}) }}"
+        critical_failures: true
+      when: package_file.stat is not defined or not package_file.stat.exists
+
+    - name: "Package file result"
+      ansible.builtin.debug:
+        msg: "Package file: {{ test_results.get('package_file', 'FAIL') }}"
+
+    # Test 3: Check master_patch.yaml syntax
+    - name: "TEST 3: Check master_patch.yaml syntax"
+      ansible.builtin.command:
+        cmd: "ansible-playbook --syntax-check {{ project_root }}/master_patch.yaml"
+      register: master_syntax
+      changed_when: false
+      ignore_errors: true
+
+    - name: "Store master playbook syntax test result"
+      ansible.builtin.set_fact:
+        test_results: "{{ test_results | combine({'master_playbook_syntax': 'PASS' if master_syntax.rc == 0 else 'FAIL'}) }}"
+      when: master_syntax.rc is defined
+
+    - name: "Store master playbook syntax test result (failed)"
+      ansible.builtin.set_fact:
+        test_results: "{{ test_results | combine({'master_playbook_syntax': 'FAIL'}) }}"
+        critical_failures: true
+      when: master_syntax.rc is not defined or master_syntax.rc != 0
+
+    - name: "Master playbook syntax result"
+      ansible.builtin.debug:
+        msg: "Master playbook syntax: {{ test_results.get('master_playbook_syntax', 'FAIL') }}"
+
+    - name: "Show master syntax error if failed"
+      ansible.builtin.debug:
+        msg: "{{ master_syntax.stderr | default('Unknown error') }}"
+      when: master_syntax.rc is defined and master_syntax.rc != 0
+
+    # Test 4: Check generate_report.yaml syntax
+    - name: "TEST 4: Check generate_report.yaml syntax"
+      ansible.builtin.command:
+        cmd: "ansible-playbook --syntax-check {{ project_root }}/generate_report.yaml"
+      register: report_syntax
+      changed_when: false
+      ignore_errors: true
+
+    - name: "Store report playbook syntax test result"
+      ansible.builtin.set_fact:
+        test_results: "{{ test_results | combine({'report_playbook_syntax': 'PASS' if report_syntax.rc == 0 else 'FAIL'}) }}"
+      when: report_syntax.rc is defined
+
+    - name: "Store report playbook syntax test result (failed)"
+      ansible.builtin.set_fact:
+        test_results: "{{ test_results | combine({'report_playbook_syntax': 'FAIL'}) }}"
+        critical_failures: true
+      when: report_syntax.rc is not defined or report_syntax.rc != 0
+
+    - name: "Report playbook syntax result"
+      ansible.builtin.debug:
+        msg: "Report playbook syntax: {{ test_results.get('report_playbook_syntax', 'FAIL') }}"
+
+    - name: "Show report syntax error if failed"
+      ansible.builtin.debug:
+        msg: "{{ report_syntax.stderr | default('Unknown error') }}"
+      when: report_syntax.rc is defined and report_syntax.rc != 0
+
+    # Test 5: Test package_parser module
+    - name: "TEST 5: Test package_parser module"
+      ansible.builtin.command:
+        cmd: "python3 {{ project_root }}/tests/test_package_parser.py"
+      register: parser_result
+      changed_when: false
+      ignore_errors: true
+
+    - name: "Store package parser test result"
+      ansible.builtin.set_fact:
+        test_results: "{{ test_results | combine({'package_parser': 'PASS' if parser_result.rc == 0 else 'FAIL'}) }}"
+      when: parser_result.rc is defined
+
+    - name: "Store package parser test result (failed)"
+      ansible.builtin.set_fact:
+        test_results: "{{ test_results | combine({'package_parser': 'FAIL'}) }}"
+        packages_parsed: 0
+        critical_failures: true
+      when: parser_result.rc is not defined or parser_result.rc != 0
+
+    - name: "Extract package count from output"
+      ansible.builtin.set_fact:
+        packages_parsed: "{{ parser_result.stdout | regex_search('Read (\\d+) packages', '\\1') | first | default(0) }}"
+      when: parser_result.rc is defined and parser_result.rc == 0
+
+    - name: "Package parser result"
+      ansible.builtin.debug:
+        msg: "Package parser module: {{ test_results.get('package_parser', 'FAIL') }}"
+
+    - name: "Show parser output"
+      ansible.builtin.debug:
+        msg: "{{ parser_result.stdout_lines }}"
+      when: parser_result.rc is defined and parser_result.rc != 0
+
+    # Test 6: Check if roles directory exists
+    - name: "TEST 6: Check if roles directory exists"
+      ansible.builtin.stat:
+        path: "{{ project_root }}/roles"
+      register: roles_dir
+      ignore_errors: true
+
+    - name: "Store roles directory test result"
+      ansible.builtin.set_fact:
+        test_results: "{{ test_results | combine({'roles_directory': 'PASS' if roles_dir.stat.exists and roles_dir.stat.isdir else 'FAIL'}) }}"
+      when: roles_dir.stat is defined
+
+    - name: "Store roles directory test result (failed)"
+      ansible.builtin.set_fact:
+        test_results: "{{ test_results | combine({'roles_directory': 'FAIL'}) }}"
+      when: roles_dir.stat is not defined or not roles_dir.stat.exists or not roles_dir.stat.isdir
+
+    - name: "Roles directory result"
+      ansible.builtin.debug:
+        msg: "Roles directory: {{ test_results.get('roles_directory', 'FAIL') }}"
+
+    # Test 7: Check if library directory exists and contains module
+    - name: "TEST 7: Check if library directory exists"
+      ansible.builtin.stat:
+        path: "{{ project_root }}/library"
+      register: library_dir
+      ignore_errors: true
+
+    - name: "Store library directory test result"
+      ansible.builtin.set_fact:
+        test_results: "{{ test_results | combine({'library_directory': 'PASS' if library_dir.stat.exists and library_dir.stat.isdir else 'FAIL'}) }}"
+      when: library_dir.stat is defined
+
+    - name: "Store library directory test result (failed)"
+      ansible.builtin.set_fact:
+        test_results: "{{ test_results | combine({'library_directory': 'FAIL'}) }}"
+      when: library_dir.stat is not defined or not library_dir.stat.exists or not library_dir.stat.isdir
+
+    - name: "Library directory result"
+      ansible.builtin.debug:
+        msg: "Library directory: {{ test_results.get('library_directory', 'FAIL') }}"
+
+    # Test 8: Check ansible.cfg exists
+    - name: "TEST 8: Check if ansible.cfg exists"
+      ansible.builtin.stat:
+        path: "{{ project_root }}/ansible.cfg"
+      register: ansible_cfg
+      ignore_errors: true
+
+    - name: "Store ansible.cfg test result"
+      ansible.builtin.set_fact:
+        test_results: "{{ test_results | combine({'ansible_config': 'PASS' if ansible_cfg.stat.exists else 'FAIL'}) }}"
+      when: ansible_cfg.stat is defined
+
+    - name: "Store ansible.cfg test result (failed)"
+      ansible.builtin.set_fact:
+        test_results: "{{ test_results | combine({'ansible_config': 'FAIL'}) }}"
+      when: ansible_cfg.stat is not defined or not ansible_cfg.stat.exists
+
+    - name: "Ansible config result"
+      ansible.builtin.debug:
+        msg: "Ansible config: {{ test_results.get('ansible_config', 'FAIL') }}"
+
+    # Display summary
+    - name: "=========================================="
+      ansible.builtin.debug:
+        msg: "=========================================="
+
+    - name: "Display packages parsed count"
+      ansible.builtin.debug:
+        msg: "Packages parsed: {{ packages_parsed | default(0) }}"
+
+    - name: "Display parser summary - architectures"
+      ansible.builtin.debug:
+        msg: "Architectures: {{ parser_result.stdout | regex_search('Architectures: (.+)', '\\1') | first | default('N/A') }}"
+      when: parser_result.rc is defined and parser_result.rc == 0
+
+    - name: "Display RHEL versions"
+      ansible.builtin.debug:
+        msg: "RHEL versions: {{ parser_result.stdout | regex_search('RHEL versions: (.+)', '\\1') | first | default('N/A') }}"
+      when: parser_result.rc is defined and parser_result.rc == 0
+
+    - name: "=========================================="
+      ansible.builtin.debug:
+        msg: "=========================================="
+
+    # Count passed and failed tests
+    - name: "Calculate test statistics"
+      ansible.builtin.set_fact:
+        passed_tests: "{{ test_results.values() | select('equalto', 'PASS') | list | length }}"
+        failed_tests: "{{ test_results.values() | select('equalto', 'FAIL') | list | length }}"
+        total_tests: "{{ test_results.values() | list | length }}"
+
+    - name: "Display test summary"
+      ansible.builtin.debug:
+        msg:
+          - "Total tests: {{ total_tests }}"
+          - "Passed: {{ passed_tests }}"
+          - "Failed: {{ failed_tests }}"
+
+    - name: "=========================================="
+      ansible.builtin.debug:
+        msg: "=========================================="
+
+    # Final verdict
+    - name: "Display final verdict"
+      ansible.builtin.debug:
+        msg: "STATUS: {{ 'ALL TESTS PASSED' if not critical_failures else 'TESTS FAILED' }}"
+
+    - name: "Fail playbook if critical tests failed"
+      ansible.builtin.fail:
+        msg: "Integration tests failed! Please review the errors above."
+      when: critical_failures
