@@ -1,0 +1,46 @@
+# RHEL Package Patching List - February 2026
+# This file contains RPM packages that need to be patched for security vulnerabilities
+#
+# Format: package-name-version-release.architecture.rpm
+#
+# CVEs being addressed in February 2026:
+# - CVE-2025-21378: Critical nginx security vulnerability
+# - CVE-2025-26412: Important curl security update
+# - CVE-2025-26789: Moderate openssl security flaw
+# - CVE-2025-27001: Critical kernel security issue
+# - CVE-2025-27345: Important systemd security update
+# - CVE-2025-27678: Moderate bash security flaw
+#
+# Web Server Components (CVE-2025-21378)
+nginx-1.28.2-1.el9.ngx.x86_64.rpm
+nginx-1.26.3-1.el8.ngx.x86_64.rpm
+#
+# Network Utilities (CVE-2025-26412)
+curl-8.7.1-1.el9_5.x86_64.rpm
+curl-8.2.1-3.el8_10.x86_64.rpm
+libcurl-8.7.1-1.el9_5.x86_64.rpm
+libcurl-8.2.1-3.el8_10.x86_64.rpm
+#
+# SSL/TLS Libraries (CVE-2025-26789)
+openssl-libs-3.2.2-1.el9.x86_64.rpm
+openssl-libs-1.1.1k-12.el8_10.x86_64.rpm
+openssl-3.2.2-1.el9.x86_64.rpm
+openssl-1.1.1k-12.el8_10.x86_64.rpm
+#
+# Kernel Updates (CVE-2025-27001)
+kernel-5.14.0-503.el9.x86_64.rpm
+kernel-4.18.0-553.el8_10.x86_64.rpm
+kernel-core-5.14.0-503.el9.x86_64.rpm
+kernel-core-4.18.0-553.el8_10.x86_64.rpm
+kernel-modules-5.14.0-503.el9.x86_64.rpm
+kernel-modules-4.18.0-553.el8_10.x86_64.rpm
+#
+# System Components (CVE-2025-27345)
+systemd-252-28.el9_5.x86_64.rpm
+systemd-239-82.el8_10.x86_64.rpm
+systemd-libs-252-28.el9_5.x86_64.rpm
+systemd-libs-239-82.el8_10.x86_64.rpm
+#
+# Shell Updates (CVE-2025-27678)
+bash-5.1.8-9.el9_5.x86_64.rpm
+bash-4.2.46-37.el8_10.x86_64.rpm
