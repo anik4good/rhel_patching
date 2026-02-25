@@ -1,0 +1,125 @@
+---
+# RHEL 9.0 to 9.3 Patching Playbook
+# Description: Update RHEL system packages and display version info
+# Usage: ansible-playbook -i inventory.yml playbook.yml
+
+- name: RHEL 9 Patching
+  hosts: all
+  gather_facts: true
+  become: true
+  ignore_errors: yes
+
+  vars:
+    log_path: /var/log/rhel_update.log
+    target_version: "{{ patch | default('9.6') }}"
+    
+
+  tasks:
+    - name: Display target server information
+      ansible.builtin.debug:
+        msg:
+          - "=========================================="
+          - "  PATCHING: {{ inventory_hostname }}"
+          - "=========================================="
+          - "OS: {{ ansible_distribution }} {{ ansible_distribution_version }}"
+          - "Kernel: {{ ansible_kernel }}"
+          - "IP: {{ ansible_default_ipv4.address | default(ansible_hostname) }}"
+
+    - name: Get current RHEL version BEFORE update
+      ansible.builtin.shell: cat /etc/redhat-release
+      register: version_before
+      changed_when: false
+
+    - name: Display current version
+      ansible.builtin.debug:
+        msg:
+          - "=========================================="
+          - "  CURRENT VERSION (BEFORE)"
+          - "=========================================="
+          - "{{ version_before.stdout }}"
+          - "=========================================="
+
+    # - name: Check for available updates
+    #   ansible.builtin.dnf:
+    #     list: updates
+    #     # update_cache: yes
+    #   register: available_updates
+    #   changed_when: false
+
+    # - name: Count available updates
+    #   ansible.builtin.set_fact:
+    #     update_count: "{{ available_updates.results | default([]) | length }}"
+
+    # - name: Display available updates count
+    #   ansible.builtin.debug:
+    #     msg: "{{ update_count }} updates available"
+
+    # - name: Upgrade to RHEL {{ target_version }} specifically
+    #   ansible.builtin.command: dnf upgrade --releasever={{ target_version }} -y
+    #   register: update_result
+    #   async: 3600
+    #   poll: 10
+
+    # - name: Get new RHEL version AFTER update
+    #   ansible.builtin.shell: cat /etc/redhat-release
+    #   register: version_after
+    #   changed_when: false
+
+    - name: Display summary
+      ansible.builtin.debug:
+        msg:
+          - "=========================================="
+          - "  PATCHING SUMMARY"
+          - "=========================================="
+          - "VERSION BEFORE: {{ version_before.stdout }}"
+          - "VERSION AFTER:  {{ version_after.stdout }}"
+          # - "PACKAGES CHANGED: {{ update_result.changes | default({}) | length }}"
+          - "=========================================="
+
+    - name: Check if reboot is required
+      ansible.builtin.command: /usr/bin/needs-restarting -r
+      register: reboot_required
+      failed_when: false
+      changed_when: reboot_required.rc != 0
+
+    - name: Display reboot status
+      ansible.builtin.debug:
+        msg:
+          - "=========================================="
+          - "  REBOOT STATUS"
+          - "=========================================="
+          - "Reboot Required: {{ 'YES' if reboot_required.rc != 0 else 'NO' }}"
+          - "{% if reboot_required.rc != 0 %}Reason: {{ reboot_required.stdout }}{% endif %}"
+          - "=========================================="
+
+    - name: Create summary file on target
+      ansible.builtin.copy:
+        content: |
+          RHEL Update Summary
+          ====================
+          Date: {{ ansible_date_time.iso8601 }}
+          Server: {{ inventory_hostname }}
+
+          Version Before: {{ version_before.stdout }}
+          Version After: {{ version_after.stdout }}
+
+          Reboot Required: {% if reboot_required.rc != 0 %}YES{% else %}NO{% endif %}
+
+          {% if reboot_required.rc != 0 %}
+          Reboot Reason: {{ reboot_required.stdout }}
+          {% endif %}
+        dest: "{{ log_path }}"
+        mode: '0644'
+
+    - name: Fetch summary to local machine
+      ansible.builtin.fetch:
+        src: "{{ log_path }}"
+        dest: "rhel_summary_{{ inventory_hostname }}_{{ ansible_date_time.iso8601 }}.log"
+        flat: yes
+      tags: fetch_summary
+
+    - name: reboot the server
+      ansible.builtin.reboot:
+        msg: "Rebooting after RHEL update to {{ target_version }}"
+        pre_reboot_delay: 10
+        reboot_timeout: 600

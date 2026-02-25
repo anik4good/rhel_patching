@@ -1,0 +1,89 @@
+---
+# Example: How to generate HTML report using ONLY Ansible
+# No Python needed - just Ansible template module
+
+- name: Generate RHEL Patching HTML Report
+  hosts: localhost
+  gather_facts: false
+  vars:
+    report_dir: "./reports"
+    timestamp: "2026-02-12 14:32:15 UTC"
+    execution_id: "a7f3c2d1"
+    total_duration: "2h 45m 32s"
+    admin_email: "admin@example.com"
+
+    # This data would normally come from your patching playbook results
+    environments:
+      - name: uat
+        total: 5
+        success: 5
+        failed: 0
+        pending: 0
+        patches_applied: 1234
+        servers:
+          - { hostname: uat-web-01.example.com, ip: 10.10.10.101, rhel_version: "9.4", kernel: "5.14.0-427.31.1.el9_4.x86_64", patches: 247, duration: "8m 32s", status: success }
+          - { hostname: uat-db-01.example.com, ip: 10.10.10.102, rhel_version: "9.4", kernel: "5.14.0-427.31.1.el9_4.x86_64", patches: 256, duration: "12m 15s", status: success }
+          - { hostname: uat-app-01.example.com, ip: 10.10.10.103, rhel_version: "9.4", kernel: "5.14.0-427.31.1.el9_4.x86_64", patches: 238, duration: "9m 47s", status: success }
+          - { hostname: uat-app-02.example.com, ip: 10.10.10.104, rhel_version: "9.4", kernel: "5.14.0-427.31.1.el9_4.x86_64", patches: 238, duration: "9m 52s", status: success }
+          - { hostname: uat-cache-01.example.com, ip: 10.10.10.105, rhel_version: "9.4", kernel: "5.14.0-427.31.1.el9_4.x86_64", patches: 189, duration: "6m 18s", status: success }
+
+      - name: prod
+        total: 8
+        success: 7
+        failed: 0
+        pending: 1
+        patches_applied: 1856
+        servers:
+          - { hostname: prod-web-01.example.com, ip: 10.20.20.101, rhel_version: "9.4", kernel: "5.14.0-427.31.1.el9_4.x86_64", patches: 287, duration: "11m 23s", status: success }
+          - { hostname: prod-web-02.example.com, ip: 10.20.20.102, rhel_version: "9.4", kernel: "5.14.0-427.31.1.el9_4.x86_64", patches: 287, duration: "11m 45s", status: success }
+          - { hostname: prod-db-01.example.com, ip: 10.20.20.103, rhel_version: "9.4", kernel: "5.14.0-427.31.1.el9_4.x86_64", patches: 312, duration: "18m 07s", status: success }
+          - { hostname: prod-db-02.example.com, ip: 10.20.20.104, rhel_version: "9.4", kernel: "5.14.0-427.31.1.el9_4.x86_64", patches: 312, duration: "17m 54s", status: success }
+          - { hostname: prod-app-01.example.com, ip: 10.20.20.105, rhel_version: "9.4", kernel: "5.14.0-427.31.1.el9_4.x86_64", patches: 267, duration: "10m 33s", status: success }
+          - { hostname: prod-app-02.example.com, ip: 10.20.20.106, rhel_version: "9.4", kernel: "5.14.0-427.31.1.el9_4.x86_64", patches: 267, duration: "10m 41s", status: success }
+          - { hostname: prod-api-01.example.com, ip: 10.20.20.107, rhel_version: "9.4", kernel: "5.14.0-427.31.1.el9_4.x86_64", patches: 254, duration: "9m 28s", status: success }
+          - { hostname: prod-api-02.example.com, ip: 10.20.20.108, rhel_version: "9.4", kernel: "5.14.0-427.31.1.el9_4.x86_64", patches: 254, duration: "9m 35s", status: success }
+
+      - name: dr
+        total: 3
+        success: 3
+        failed: 0
+        pending: 0
+        patches_applied: 678
+        servers:
+          - { hostname: dr-web-01.example.com, ip: 10.30.30.101, rhel_version: "9.4", kernel: "5.14.0-427.31.1.el9_4.x86_64", patches: 291, duration: "12m 05s", status: success }
+          - { hostname: dr-db-01.example.com, ip: 10.30.30.102, rhel_version: "9.4", kernel: "5.14.0-427.31.1.el9_4.x86_64", patches: 298, duration: "16m 42s", status: success }
+          - { hostname: dr-app-01.example.com, ip: 10.30.30.103, rhel_version: "9.4", kernel: "5.14.0-427.31.1.el9_4.x86_64", patches: 263, duration: "10m 18s", status: success }
+
+    # Calculate totals
+    total_servers: "{{ environments | sum(attribute='total') }}"
+    total_success: "{{ environments | sum(attribute='success') }}"
+    total_failed: "{{ environments | sum(attribute='failed') }}"
+    total_pending: "{{ environments | sum(attribute='pending') }}"
+    total_patches: "{{ environments | sum(attribute='patches_applied') }}"
+
+  tasks:
+    - name: Calculate completion percentage
+      set_fact:
+        completion_percent: "{{ ((total_success | int) / (total_servers | int) * 100) | round(2) }}"
+
+    - name: Create reports directory
+      file:
+        path: "{{ report_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Generate HTML report
+      template:
+        src: templates/html_report_template.j2
+        dest: "{{ report_dir }}/patching_report_{{ execution_id }}.html"
+        mode: '0644'
+
+    - name: Report generated
+      debug:
+        msg:
+          - "=========================================="
+          - "  HTML REPORT GENERATED"
+          - "=========================================="
+          - "Location: {{ report_dir }}/patching_report_{{ execution_id }}.html"
+          - "Open in browser to view"
+          - "=========================================="

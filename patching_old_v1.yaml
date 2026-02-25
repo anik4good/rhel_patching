@@ -1,0 +1,178 @@
+---
+# RHEL 9.7 Local Repo Patching Playbook
+# Description: Update RHEL system to 9.7 using local repository
+# Usage: ansible-playbook -i inventory patching_local_repo.yaml
+# Prerequisites: Local RHEL 9.7 repo must be configured on target
+
+- name: RHEL 9  Patching
+  hosts: all
+  gather_facts: true
+  become: true
+
+  vars:
+    log_path: /var/log/rhel_96_update.log
+    target_version: "9.7"
+
+  tasks:
+  - name: Display target server information
+    ansible.builtin.debug:
+      msg:
+      - "=========================================="
+      - "  PATCHING: {{ inventory_hostname }}"
+      - "=========================================="
+      - "OS: {{ ansible_distribution }} {{ ansible_distribution_version }}"
+      - "Kernel: {{ ansible_kernel }}"
+      - "IP: {{ ansible_default_ipv4.address | default(ansible_hostname) }}"
+
+  - name: Get current RHEL version BEFORE update
+    ansible.builtin.shell: cat /etc/redhat-release
+    register: version_before
+    changed_when: false
+
+  - name: Display current version
+    ansible.builtin.debug:
+      msg:
+      - "=========================================="
+      - "  CURRENT VERSION (BEFORE)"
+      - "=========================================="
+      - "{{ version_before.stdout }}"
+      - "=========================================="
+
+  - name: Verify local RHEL 9.7 repo is available
+    ansible.builtin.shell: dnf repolist | grep -i "9.7\|local"
+    register: repo_check
+    changed_when: false
+    failed_when: false
+
+  - name: Display available repos
+    ansible.builtin.debug:
+      msg: "{{ repo_check.stdout }}"
+
+  - name: Check for available updates
+    ansible.builtin.dnf:
+      list: updates
+    register: available_updates
+    changed_when: false
+
+  - name: Count available updates
+    ansible.builtin.set_fact:
+      update_count: "{{ available_updates.results | default([]) | length }}"
+
+  - name: Display available updates count
+    ansible.builtin.debug:
+      msg: "{{ update_count }} updates available"
+
+  - name: Clean dnf cache
+    ansible.builtin.command: dnf clean all
+    changed_when: true
+
+  - name: Upgrade to RHEL {{ target_version }} using local repo
+    ansible.builtin.command: dnf upgrade --releasever={{ target_version }} -y
+    register: update_result
+    async: 3600
+    poll: 10
+
+  - name: Display upgrade result
+    ansible.builtin.debug:
+      msg:
+      - "=========================================="
+      - "  UPGRADE RESULT"
+      - "=========================================="
+      - "Changed: {{ update_result.changed }}"
+      - "RC: {{ update_result.rc | default('N/A') }}"
+      - "=========================================="
+    failed_when: false
+
+  - name: Get new RHEL version AFTER update
+    ansible.builtin.shell: cat /etc/redhat-release
+    register: version_after
+    changed_when: false
+
+  - name: Display summary
+    ansible.builtin.debug:
+      msg:
+      - "=========================================="
+      - "  PATCHING SUMMARY"
+      - "=========================================="
+      - "VERSION BEFORE: {{ version_before.stdout }}"
+      - "VERSION AFTER:  {{ version_after.stdout }}"
+      - "=========================================="
+
+  - name: Verify kernel version
+    ansible.builtin.shell: uname -r
+    register: kernel_version
+    changed_when: false
+
+  - name: Display kernel version
+    ansible.builtin.debug:
+      msg: "Kernel: {{ kernel_version.stdout }}"
+
+  - name: Check if reboot is required
+    ansible.builtin.command: /usr/bin/needs-restarting -r
+    register: reboot_required
+    failed_when: false
+    changed_when: reboot_required.rc != 0
+
+  - name: Display reboot status
+    ansible.builtin.debug:
+      msg:
+      - "=========================================="
+      - "  REBOOT STATUS"
+      - "=========================================="
+      - "Reboot Required: {{ 'YES' if reboot_required.rc != 0 else 'NO' }}"
+      - "{% if reboot_required.rc != 0 %}Reason: {{ reboot_required.stdout }}{% endif %}"
+      - "=========================================="
+
+  - name: Create summary file on target
+    ansible.builtin.copy:
+      content: |
+        RHEL 9.7 Update Summary (Local Repo)
+        =====================================
+        Date: {{ ansible_date_time.iso8601 }}
+        Server: {{ inventory_hostname }}
+
+        Version Before: {{ version_before.stdout }}
+        Version After:  {{ version_after.stdout }}
+        Kernel Version:  {{ kernel_version.stdout }}
+
+        Reboot Required: {% if reboot_required.rc != 0 %}YES{% else %}NO{% endif %}
+
+        {% if reboot_required.rc != 0 %}
+        Reboot Reason: {{ reboot_required.stdout }}
+        {% endif %}
+
+        Available Updates: {{ update_count }}
+        Method: Local Repository
+      dest: "{{ log_path }}"
+      mode: '0644'
+
+  - name: Fetch summary to local machine
+    ansible.builtin.fetch:
+      src: "{{ log_path }}"
+      dest: "rhel_96_summary_{{ inventory_hostname }}_{{ ansible_date_time.iso8601 }}.log"
+      flat: yes
+    tags: fetch_summary
+
+  - name: Reboot the server
+    ansible.builtin.reboot:
+      msg: "Rebooting after RHEL update to {{ target_version }}"
+      pre_reboot_delay: 10
+      reboot_timeout: 600
+    when: reboot_required.rc != 0
+
+  - name: Confirm system is back online
+    ansible.builtin.ping:
+    register: ping_result
+    retries: 30
+    delay: 10
+    until: ping_result is succeeded
+
+  - name: Display final confirmation
+    ansible.builtin.debug:
+      msg:
+      - "=========================================="
+      - "  UPGRADE COMPLETE"
+      - "=========================================="
+      - "System {{ inventory_hostname }} is back online"
+      - "Verify version: {{ version_after.stdout }}"
+      - "=========================================="

@@ -12,6 +12,7 @@
 # - CVE-2025-27678: Moderate bash security flaw
 #
 # Web Server Components (CVE-2025-21378)
+# NOTE: Update versions below to match what's available in your RHEL 9.7 repo
 nginx-1.28.2-1.el9.ngx.x86_64.rpm
 nginx-1.26.3-1.el8.ngx.x86_64.rpm
 #

@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>RHEL Patching Report</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; font-size: 14px; }
+        .container { max-width: 1400px; margin: 0 auto; background: white; padding: 20px; border: 1px solid #ddd; }
+        h1 { color: #333; border-bottom: 3px solid #0066cc; padding-bottom: 10px; }
+        h2 { color: #555; margin-top: 30px; border-bottom: 1px solid #ddd; padding-bottom: 5px; }
+        h3 { color: #666; margin-top: 20px; }
+        .metadata { background: #f0f0f0; padding: 12px; margin: 10px 0; font-size: 13px; border-left: 4px solid #0066cc; }
+        .summary-table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 13px; }
+        .summary-table th, .summary-table td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+        .summary-table th { background: #0066cc; color: white; font-weight: bold; }
+        .summary-table tr:nth-child(even) { background: #f9f9f9; }
+        .status-success { color: #008000; font-weight: bold; }
+        .status-failed { color: #cc0000; font-weight: bold; }
+        .status-pending { color: #ff8c00; font-weight: bold; }
+        .env-section { margin: 30px 0; border: 1px solid #ccc; padding: 0; }
+        .env-header { background: #333; color: white; padding: 12px; font-weight: bold; font-size: 16px; }
+        .server-section { margin: 20px; border: 1px solid #ddd; }
+        .server-header { background: #e8f4ff; padding: 10px; font-weight: bold; color: #0066cc; }
+        .patch-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
+        .patch-table th { background: #666; color: white; padding: 8px; text-align: left; border: 1px solid #444; }
+        .patch-table td { border: 1px solid #ddd; padding: 8px; }
+        .patch-table tr:nth-child(even) { background: #f5f5f5; }
+        .version-before { color: #cc0000; }
+        .version-after { color: #008000; font-weight: bold; }
+        .arrow { color: #0066cc; font-weight: bold; }
+        .kernel-row { background: #fff4e6; font-weight: bold; }
+        .security-row { background: #ffe6e6; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🐴 RHEL Security Patching Report</h1>
+
+        <div class="metadata">
+            <strong>Generated:</strong> 2026-02-12 14:32:15 UTC |
+            <strong>Execution ID:</strong> a7f3c2d1 |
+            <strong>Total Duration:</strong> 2h 45m 32s |
+            <strong>Workflow:</strong> UAT → DR → PROD
+        </div>
+
+        <h2>Summary</h2>
+        <table class="summary-table">
+            <tr>
+                <th>Environment</th>
+                <th>Servers</th>
+                <th>Success</th>
+                <th>Failed</th>
+                <th>Patches Applied</th>
+                <th>Kernel Updates</th>
+                <th>Security Updates</th>
+                <th>Status</th>
+            </tr>
+            <tr>
+                <td><strong>UAT</strong></td>
+                <td>5</td>
+                <td>5</td>
+                <td>0</td>
+                <td>12</td>
+                <td>2</td>
+                <td>5</td>
+                <td><span class="status-success">COMPLETE</span></td>
+            </tr>
+            <tr>
+                <td><strong>DR</strong></td>
+                <td>3</td>
+                <td>3</td>
+                <td>0</td>
+                <td>12</td>
+                <td>2</td>
+                <td>5</td>
+                <td><span class="status-success">COMPLETE</span></td>
+            </tr>
+            <tr>
+                <td><strong>PROD</strong></td>
+                <td>8</td>
+                <td>8</td>
+                <td>0</td>
+                <td>12</td>
+                <td>2</td>
+                <td>5</td>
+                <td><span class="status-success">COMPLETE</span></td>
+            </tr>
+            <tr style="background: #e6f2ff; font-weight: bold;">
+                <td>TOTAL</td>
+                <td>16</td>
+                <td>16</td>
+                <td>0</td>
+                <td>12</td>
+                <td>2</td>
+                <td>5</td>
+                <td>100% Complete</td>
+            </tr>
+        </table>
+
+        <!-- UAT Environment -->
+        <div class="env-section">
+            <div class="env-header">
+                UAT Environment (5 servers) - 12 patches applied
+            </div>
+
+            <!-- Server 1 -->
+            <div class="server-section">
+                <div class="server-header">
+                    📡 uat-web-01.example.com (10.10.10.101)
+                    <span style="float: right; font-weight: normal; font-size: 12px;">
+                        Duration: 8m 32s | Status: <span class="status-success">SUCCESS</span>
+                    </span>
+                </div>
+                <table class="patch-table">
+                    <tr>
+                        <th style="width: 25%">Package Name</th>
+                        <th style="width: 20%">Version Before</th>
+                        <th style="width: 5%"></th>
+                        <th style="width: 20%">Version After</th>
+                        <th style="width: 10%">Type</th>
+                        <th style="width: 20%">Repository</th>
+                    </tr>
+                    <tr class="kernel-row">
+                        <td><strong>kernel</strong></td>
+                        <td class="version-before">5.14.0-284.11.1.el9_2.x86_64</td>
+                        <td class="arrow">→</td>
+                        <td class="version-after">5.14.0-427.31.1.el9_4.x86_64</td>
+                        <td>KERNEL</td>
+                        <td>rhel-9.6-local</td>
+                    </tr>
+                    <tr class="kernel-row">
+                        <td><strong>kernel-core</strong></td>
+                        <td class="version-before">5.14.0-284.11.1.el9_2.x86_64</td>
+                        <td class="arrow">→</td>
+                        <td class="version-after">5.14.0-427.31.1.el9_4.x86_64</td>
+                        <td>KERNEL</td>
+                        <td>rhel-9.6-local</td>
+                    </tr>
+                    <tr class="security-row">
+                        <td><strong>openssl</strong></td>
+                        <td class="version-before">3.0.1-47.el9_2</td>
+                        <td class="arrow">→</td>
+                        <td class="version-after">3.0.7-27.el9_4</td>
+                        <td>SECURITY</td>
+                        <td>rhel-9.6-local</td>
+                    </tr>
+                    <tr class="security-row">
+                        <td><strong>openssl-libs</strong></td>
+                        <td class="version-before">3.0.1-47.el9_2</td>
+                        <td class="arrow">→</td>
+                        <td class="version-after">3.0.7-27.el9_4</td>
+                        <td>SECURITY</td>
+                        <td>rhel-9.6-local</td>
+                    </tr>
+                    <tr class="security-row">
+                        <td><strong>glibc</strong></td>
+                        <td class="version-before">2.34-60.el9_2.7</td>
+                        <td class="arrow">→</td>
+                        <td class="version-after">2.34-100.el9_4.1</td>
+                        <td>SECURITY</td>
+                        <td>rhel-9.6-local</td>
+                    </tr>
+                    <tr class="security-row">
+                        <td><strong>bash</strong></td>
+                        <td class="version-before">5.1.8-6.el9_2</td>
+                        <td class="arrow">→</td>
+                        <td class="version-after">5.1.8-9.el9_4</td>
+                        <td>SECURITY</td>
+                        <td>rhel-9.6-local</td>
+                    </tr>
+                    <tr class="security-row">
+                        <td><strong>curl</strong></td>
+                        <td class="version-before">7.76.1-19.el9_2.3</td>
+                        <td class="arrow">→</td>
+                        <td class="version-after">7.76.1-29.el9_4</td>
+                        <td>SECURITY</td>
+                        <td>rhel-9.6-local</td>
+                    </tr>
+                    <tr>
+                        <td><strong>nginx</strong></td>
+                        <td class="version-before">1.20.1-8.el9_2</td>
+                        <td class="arrow">→</td>
+                        <td class="version-after">1.20.1-14.el9_4</td>
+                        <td>BUGFIX</td>
+                        <td>appstream-9.6</td>
+                    </tr>
+                    <tr>
+                        <td><strong>python3</strong></td>
+                        <td class="version-before">3.9.7-21.el9_2.5</td>
+                        <td class="arrow">→</td>
+                        <td class="version-after">3.9.16-1.el9_4</td>
+                        <td>BUGFIX</td>
+                        <td>appstream-9.6</td>
+                    </tr>
+                    <tr>
+                        <td><strong>systemd</strong></td>
+                        <td class="version-before">250-12.el9_2.5</td>
+                        <td class="arrow">→</td>
+                        <td class="version-after">252-23.el9_4</td>
+                        <td>BUGFIX</td>
+                        <td>baseos-9.6</td>
+                    </tr>
+                    <tr>
+                        <td><strong>openssh-server</strong></td>
+                        <td class="version-before">8.7p1-8.el9_2</td>
+                        <td class="arrow">→</td>
+                        <td class="version-after">8.7p1-38.el9_4</td>
+                        <td>SECURITY</td>
+                        <td>baseos-9.6</td>
+                    </tr>
+                </table>
+            </div>
+
+            <!-- Server 2 -->
+            <div class="server-section">
+                <div class="server-header">
+                    📡 uat-db-01.example.com (10.10.10.102)
+                    <span style="float: right; font-weight: normal; font-size: 12px;">
+                        Duration: 12m 15s | Status: <span class="status-success">SUCCESS</span>
+                    </span>
+                </div>
+                <table class="patch-table">
+                    <tr>
+                        <th style="width: 25%">Package Name</th>
+                        <th style="width: 20%">Version Before</th>
+                        <th style="width: 5%"></th>
+                        <th style="width: 20%">Version After</th>
+                        <th style="width: 10%">Type</th>
+                        <th style="width: 20%">Repository</th>
+                    </tr>
+                    <tr class="kernel-row">
+                        <td><strong>kernel</strong></td>
+                        <td class="version-before">5.14.0-284.11.1.el9_2.x86_64</td>
+                        <td class="arrow">→</td>
+                        <td class="version-after">5.14.0-427.31.1.el9_4.x86_64</td>
+                        <td>KERNEL</td>
+                        <td>rhel-9.6-local</td>
+                    </tr>
+                    <tr class="kernel-row">
+                        <td><strong>kernel-core</strong></td>
+                        <td class="version-before">5.14.0-284.11.1.el9_2.x86_64</td>
+                        <td class="arrow">→</td>
+                        <td class="version-after">5.14.0-427.31.1.el9_4.x86_64</td>
+                        <td>KERNEL</td>
+                        <td>rhel-9.6-local</td>
+                    </tr>
+                    <tr class="security-row">
+                        <td><strong>openssl</strong></td>
+                        <td class="version-before">3.0.1-47.el9_2</td>
+                        <td class="arrow">→</td>
+                        <td class="version-after">3.0.7-27.el9_4</td>
+                        <td>SECURITY</td>
+                        <td>rhel-9.6-local</td>
+                    </tr>
+                    <tr class="security-row">
+                        <td><strong>postgresql</strong></td>
+                        <td class="version-before">13.7-4.el9_2</td>
+                        <td class="arrow">→</td>
+                        <td class="version-after">13.14-1.el9_4</td>
+                        <td>SECURITY</td>
+                        <td>appstream-9.6</td>
+                    </tr>
+                </table>
+                <p style="padding: 10px; color: #666; font-style: italic;">... 8 more patches (showing first 4)</p>
+            </div>
+
+            <p style="padding: 10px; color: #666; text-align: center;">... 3 more servers in UAT (all successful)</p>
+        </div>
+
+        <!-- DR Environment -->
+        <div class="env-section">
+            <div class="env-header">
+                DR Environment (3 servers) - 12 patches applied
+            </div>
+
+            <div class="server-section">
+                <div class="server-header">
+                    📡 dr-web-01.example.com (10.30.30.101)
+                    <span style="float: right; font-weight: normal; font-size: 12px;">
+                        Duration: 12m 05s | Status: <span class="status-success">SUCCESS</span>
+                    </span>
+                </div>
+                <table class="patch-table">
+                    <tr>
+                        <th style="width: 25%">Package Name</th>
+                        <th style="width: 20%">Version Before</th>
+                        <th style="width: 5%"></th>
+                        <th style="width: 20%">Version After</th>
+                        <th style="width: 10%">Type</th>
+                        <th style="width: 20%">Repository</th>
+                    </tr>
+                    <tr class="kernel-row">
+                        <td><strong>kernel</strong></td>
+                        <td class="version-before">5.14.0-284.11.1.el9_2.x86_64</td>
+                        <td class="arrow">→</td>
+                        <td class="version-after">5.14.0-427.31.1.el9_4.x86_64</td>
+                        <td>KERNEL</td>
+                        <td>rhel-9.6-local</td>
+                    </tr>
+                    <tr class="kernel-row">
+                        <td><strong>kernel-core</strong></td>
+                        <td class="version-before">5.14.0-284.11.1.el9_2.x86_64</td>
+                        <td class="arrow">→</td>
+                        <td class="version-after">5.14.0-427.31.1.el9_4.x86_64</td>
+                        <td>KERNEL</td>
+                        <td>rhel-9.6-local</td>
+                    </tr>
+                    <tr class="security-row">
+                        <td><strong>openssl</strong></td>
+                        <td class="version-before">3.0.1-47.el9_2</td>
+                        <td class="arrow">→</td>
+                        <td class="version-after">3.0.7-27.el9_4</td>
+                        <td>SECURITY</td>
+                        <td>rhel-9.6-local</td>
+                    </tr>
+                    <tr>
+                        <td><strong>nginx</strong></td>
+                        <td class="version-before">1.20.1-8.el9_2</td>
+                        <td class="arrow">→</td>
+                        <td class="version-after">1.20.1-14.el9_4</td>
+                        <td>BUGFIX</td>
+                        <td>appstream-9.6</td>
+                    </tr>
+                </table>
+                <p style="padding: 10px; color: #666; font-style: italic;">... 8 more patches (showing first 4)</p>
+            </div>
+
+            <p style="padding: 10px; color: #666; text-align: center;">... 2 more servers in DR (all successful)</p>
+        </div>
+
+        <!-- PROD Environment -->
+        <div class="env-section">
+            <div class="env-header">
+                PROD Environment (8 servers) - 12 patches applied
+            </div>
+
+            <div class="server-section">
+                <div class="server-header">
+                    📡 prod-web-01.example.com (10.20.20.101)
+                    <span style="float: right; font-weight: normal; font-size: 12px;">
+                        Duration: 11m 23s | Status: <span class="status-success">SUCCESS</span>
+                    </span>
+                </div>
+                <table class="patch-table">
+                    <tr>
+                        <th style="width: 25%">Package Name</th>
+                        <th style="width: 20%">Version Before</th>
+                        <th style="width: 5%"></th>
+                        <th style="width: 20%">Version After</th>
+                        <th style="width: 10%">Type</th>
+                        <th style="width: 20%">Repository</th>
+                    </tr>
+                    <tr class="kernel-row">
+                        <td><strong>kernel</strong></td>
+                        <td class="version-before">5.14.0-284.11.1.el9_2.x86_64</td>
+                        <td class="arrow">→</td>
+                        <td class="version-after">5.14.0-427.31.1.el9_4.x86_64</td>
+                        <td>KERNEL</td>
+                        <td>rhel-9.6-local</td>
+                    </tr>
+                    <tr class="kernel-row">
+                        <td><strong>kernel-core</strong></td>
+                        <td class="version-before">5.14.0-284.11.1.el9_2.x86_64</td>
+                        <td class="arrow">→</td>
+                        <td class="version-after">5.14.0-427.31.1.el9_4.x86_64</td>
+                        <td>KERNEL</td>
+                        <td>rhel-9.6-local</td>
+                    </tr>
+                    <tr class="security-row">
+                        <td><strong>openssl</strong></td>
+                        <td class="version-before">3.0.1-47.el9_2</td>
+                        <td class="arrow">→</td>
+                        <td class="version-after">3.0.7-27.el9_4</td>
+                        <td>SECURITY</td>
+                        <td>rhel-9.6-local</td>
+                    </tr>
+                    <tr>
+                        <td><strong>nginx</strong></td>
+                        <td class="version-before">1.20.1-8.el9_2</td>
+                        <td class="arrow">→</td>
+                        <td class="version-after">1.20.1-14.el9_4</td>
+                        <td>BUGFIX</td>
+                        <td>appstream-9.6</td>
+                    </tr>
+                </table>
+                <p style="padding: 10px; color: #666; font-style: italic;">... 8 more patches (showing first 4)</p>
+            </div>
+
+            <p style="padding: 10px; color: #666; text-align: center;">... 7 more servers in PROD (all successful)</p>
+        </div>
+
+        <div class="metadata" style="margin-top: 30px;">
+            <strong>Generated by:</strong> Ansible RHEL Patching Automation |
+            <strong>Contact:</strong> admin@example.com |
+            <strong>Patching Source:</strong> Jump Server Repository
+        </div>
+    </div>
+</body>
+</html>
