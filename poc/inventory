@@ -1,0 +1,18 @@
+# RHEL Patching POC - Example Inventory
+# Copy this file to 'inventory' and update with your server details
+
+[rhel_poc]
+192.168.8.51
+
+# For local testing using ansible-pull or localhost
+# localhost ansible_connection=local
+
+[rhel_poc:vars]
+# Common variables for POC testing
+ansible_become=true
+ansible_become_method=sudo
+ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+
+# If using non-root user
+# ansible_user=your-username
+# ansible_become_password=your-sudo-password

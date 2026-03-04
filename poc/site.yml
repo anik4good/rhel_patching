@@ -1,0 +1,82 @@
+---
+# RHEL Patching POC - Demonstration Playbook
+# This playbook demonstrates success and failure scenarios for patching
+#
+# Usage:
+#   Success scenario:   ansible-playbook -i inventory site.yml --tags success
+#   Pre-check failure:  ansible-playbook -i inventory site.yml --tags precheck_fail
+#   Install failure:    ansible-playbook -i inventory site.yml --tags install_fail
+#   Validation failure: ansible-playbook -i inventory site.yml --tags validate_fail
+
+- name: RHEL Patching POC - Success Scenario
+  hosts: all
+  become: true
+  serial: 1
+  vars:
+    package_name: nginx
+    current_version: "1.20.1"  # Old version reference
+    target_version: "latest"  # RHEL uses backported security fixes
+    architecture: "x86_64"
+    backup_dir: /var/lib/rpmbackup
+    log_file: /var/log/rhel_patching_success.log
+    # Repository switching settings
+    old_repo_version: "9.4"
+    new_repo_version: "9.7"
+    repo_switch_enabled: true
+  tasks:
+    - ansible.builtin.include_tasks: scenarios/success.yml
+  tags:
+    - success
+    - all_scenarios
+
+- name: RHEL Patching POC - Pre-Check Failure (Disk Space)
+  hosts: all
+  become: true
+  serial: 1
+  vars:
+    disk_threshold: 90
+    log_file: /var/log/rhel_patching_disk_fail.log
+  tasks:
+    - ansible.builtin.include_tasks: scenarios/precheck_fail.yml
+  tags:
+    - precheck_fail
+    - all_scenarios
+
+- name: RHEL Patching POC - Installation Failure (Dependency Conflict)
+  hosts: all
+  become: true
+  serial: 1
+  max_fail_percentage: 0
+  vars:
+    package_name: nginx
+    target_version: "latest"  # RHEL uses backported security fixes
+    backup_dir: /var/lib/rpmbackup
+    log_file: /var/log/rhel_patching_install_fail.log
+    problematic_package: "nonexistent-dep-package-1.0.0"
+    # Repository switching settings
+    old_repo_version: "9.4"
+    new_repo_version: "9.7"
+  tasks:
+    - ansible.builtin.include_tasks: scenarios/install_fail.yml
+  tags:
+    - install_fail
+    - all_scenarios
+
+- name: RHEL Patching POC - Post-Validation Failure (Service Not Running)
+  hosts: all
+  become: true
+  serial: 1
+  max_fail_percentage: 0
+  vars:
+    package_name: nginx
+    target_version: "latest"  # RHEL uses backported security fixes
+    backup_dir: /var/lib/rpmbackup
+    log_file: /var/log/rhel_patching_validate_fail.log
+    # Repository switching settings
+    old_repo_version: "9.4"
+    new_repo_version: "9.7"
+  tasks:
+    - ansible.builtin.include_tasks: scenarios/validate_fail.yml
+  tags:
+    - validate_fail
+    - all_scenarios

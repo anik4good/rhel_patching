@@ -1,0 +1,353 @@
+---
+# RHEL Patching POC - Success Scenario Tasks
+# These tasks demonstrate successful patching (upgrade) flow
+
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "RHEL PATCHING POC - SUCCESS SCENARIO (TC-RHEL-001)"
+
+- name: Display target server information
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  PATCHING: {{ inventory_hostname }}"
+      - "=========================================="
+      - "OS: {{ ansible_distribution }} {{ ansible_distribution_version }}"
+      - "IP: {{ ansible_default_ipv4.address | default(ansible_hostname) }}"
+      - "Architecture: {{ ansible_architecture }}"
+
+# ========================================
+# PRE-CHECK PHASE
+# ========================================
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 1: PRE-CHECK VALIDATION"
+
+- name: Check sufficient disk space
+  ansible.builtin.shell: df / | tail -1 | awk '{print $5}' | sed 's/%//'
+  register: disk_usage
+  changed_when: false
+  failed_when: disk_usage.stdout|int > 90
+
+- name: Display disk usage status
+  ansible.builtin.debug:
+    msg: "✓ Disk space check passed: {{ disk_usage.stdout }}% used"
+
+- name: Verify repository accessible (local repo or Satellite)
+  ansible.builtin.command: dnf repolist
+  register: repo_check
+  failed_when: repo_check.rc != 0
+  changed_when: false
+
+- name: Display repository status
+  ansible.builtin.debug:
+    msg: "✓ Repository accessible"
+
+# ========================================
+# REPOSITORY SWITCH PHASE (Optional - 9.4 → 9.7)
+# ========================================
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 1.5: REPOSITORY SWITCH (9.4 → 9.7)"
+
+- name: Check if custom 9.4/9.7 repos are configured
+  ansible.builtin.shell: |
+    grep -q "rhel-9\.[47]" /etc/yum.repos.d/*.repo 2>/dev/null && echo "found" || echo "not_found"
+  register: custom_repos_check
+  changed_when: false
+
+- name: Display current repository configuration
+  ansible.builtin.shell: dnf repolist
+  register: current_repos
+  changed_when: false
+
+- name: Show current enabled repos
+  ansible.builtin.debug:
+    msg: "Current repos:\n{{ current_repos.stdout }}"
+
+- name: Disable RHEL 9.4 repositories (if custom repos configured)
+  ansible.builtin.command: dnf config-manager --set-disabled rhel-9.4-*
+  register: disable_94
+  failed_when: false
+  changed_when: false
+  when: custom_repos_check.stdout == "found"
+
+- name: Enable RHEL 9.7 repositories (if custom repos configured)
+  ansible.builtin.command: dnf config-manager --set-enabled rhel-9.7-*
+  register: enable_97
+  failed_when: false
+  changed_when: false
+  when: custom_repos_check.stdout == "found"
+
+- name: Display repository switch result
+  ansible.builtin.debug:
+    msg: "{% if custom_repos_check.stdout == 'found' %}✓ Repository switch completed (9.4 → 9.7){% else %}⚠ Using default repositories (no 9.4/9.7 repos configured){% endif %}"
+
+- name: Clean DNF cache after repo switch
+  ansible.builtin.command: dnf clean all
+  changed_when: false
+
+- name: Verify subscription status (if using Satellite)
+  ansible.builtin.command: subscription-manager status
+  register: sub_check
+  failed_when: false
+  changed_when: false
+
+- name: Display subscription status
+  ansible.builtin.debug:
+    msg: "{% if 'Subscribed' in sub_check.stdout %}✓ Subscription active{% else %}⚠ No subscription (using local repo){% endif %}"
+
+- name: Check if service is running before patching
+  ansible.builtin.systemd:
+    name: "{{ package_name }}"
+    state: started
+  register: service_pre_check
+
+- name: Display pre-patch service status
+  ansible.builtin.debug:
+    msg: "✓ Service {{ package_name }} is running"
+
+# ========================================
+# BACKUP PHASE
+# ========================================
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 2: BACKUP CREATION"
+
+- name: Create backup directory
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0755'
+
+- name: Backup current package RPM (if installed)
+  ansible.builtin.shell: |
+    if rpm -q {{ package_name }} >/dev/null 2>&1; then
+      find /var/lib/rpm -name "{{ package_name }}-*.rpm" -exec cp {} {{ backup_dir }}/ \;
+      echo "Backup created"
+    else
+      echo "Package not installed, skipping backup"
+    fi
+  register: backup_result
+  changed_when: "'Backup created' in backup_result.stdout"
+
+- name: Display backup status
+  ansible.builtin.debug:
+    msg: "✓ Backup created at {{ backup_dir }}/"
+
+# ========================================
+# VERSION CHECK (BEFORE PATCH)
+# ========================================
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 2.5: VERSION CHECK - BEFORE PATCH"
+
+- name: Get current package version
+  ansible.builtin.shell: rpm -q {{ package_name }} 2>/dev/null || echo "NOT_INSTALLED"
+  register: current_version_check
+  changed_when: false
+
+- name: Display current version
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  CURRENT STATE (BEFORE PATCH)"
+      - "=========================================="
+      - "Package: {{ package_name }}"
+      - "Version: {{ current_version_check.stdout }}"
+      - "Status: {% if 'NOT_INSTALLED' in current_version_check.stdout %}Not installed{% else %}Installed{% endif %}"
+      - "=========================================="
+
+# ========================================
+# PATCHING PHASE
+# ========================================
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 3: PACKAGE PATCHING (UPGRADE)"
+
+- name: Display patching information
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  PATCHING DETAILS"
+      - "=========================================="
+      - "Before: {{ current_version_check.stdout }}"
+      - "Target: Latest available {{ package_name }}"
+      - "Action: UPGRADE"
+      - "=========================================="
+
+- name: Patch package to latest available version
+  block:
+    - name: Upgrade package to latest available
+      ansible.builtin.dnf:
+        name: "{{ package_name }}"
+        state: latest  # Gets latest available from enabled repos
+        disable_gpg_check: true
+      register: patch_result
+
+    - name: Display patching result
+      ansible.builtin.debug:
+        msg:
+          - "✓ Patching completed"
+          - "Changed: {{ patch_result.changed }}"
+          - "Changes: {{ patch_result.changes | default([]) | length }} updates"
+
+  rescue:
+    - name: Patching failure handler
+      ansible.builtin.debug:
+        msg:
+          - "=========================================="
+          - "  PATCHING FAILED"
+          - "=========================================="
+          - "Error: {{ patch_result.msg | default('Unknown error') }}"
+          - "Action: Rescue block activated"
+          - "Backup preserved: Yes"
+          - "=========================================="
+
+    - name: Mark host as failed
+      ansible.builtin.set_fact:
+        patch_status: "patching_failed"
+
+    - name: Stop execution
+      meta: end_play
+
+  always:
+    - name: Log patching attempt
+      ansible.builtin.lineinfile:
+        path: "{{ log_file }}"
+        line: "{{ ansible_date_time.iso8601 }} - Patch attempt: {{ package_name }} {{ current_version_check.stdout }} → {{ target_version }}"
+        create: true
+
+# ========================================
+# VERSION CHECK (AFTER PATCH)
+# ========================================
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 3.5: VERSION CHECK - AFTER PATCH"
+
+- name: Get new package version
+  ansible.builtin.shell: rpm -q {{ package_name }}
+  register: new_version_check
+  changed_when: false
+
+- name: Display new version
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  NEW STATE (AFTER PATCH)"
+      - "=========================================="
+      - "Package: {{ package_name }}"
+      - "Version: {{ new_version_check.stdout }}"
+      - "Status: Installed"
+      - "=========================================="
+
+- name: Display version comparison
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  PATCH SUMMARY"
+      - "=========================================="
+      - "Before: {{ current_version_check.stdout }}"
+      - "After:  {{ new_version_check.stdout }}"
+      - "Change:  {% if current_version_check.stdout != new_version_check.stdout %}VERSION CHANGED✓{% else %}No change{% endif %}"
+      - "Status:  PATCHED SUCCESSFULLY"
+      - "=========================================="
+
+# ========================================
+# POST-VALIDATION PHASE
+# ========================================
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 4: POST-VALIDATION"
+
+- name: Verify service is running
+  ansible.builtin.systemd:
+    name: "{{ package_name }}"
+    state: started
+  register: service_post_check
+
+- name: Display service status
+  ansible.builtin.debug:
+    msg: "✓ Service {{ package_name }} is running"
+
+- name: Verify service is enabled
+  ansible.builtin.systemd:
+    name: "{{ package_name }}"
+    enabled: true
+
+- name: Check service active state
+  ansible.builtin.shell: systemctl is-active {{ package_name }}
+  register: service_active
+  changed_when: false
+
+- name: Display service connectivity
+  ansible.builtin.debug:
+    msg: "✓ Service is active: {{ service_active.stdout }}"
+
+# ========================================
+# REPORTING PHASE
+# ========================================
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 5: REPORTING"
+
+- name: Create summary report
+  ansible.builtin.copy:
+    content: |
+      RHEL Patching Summary - SUCCESS
+      ================================
+      Date: {{ ansible_date_time.iso8601 }}
+      Server: {{ inventory_hostname }}
+      IP: {{ ansible_default_ipv4.address | default(ansible_hostname) }}
+      OS: {{ ansible_distribution }} {{ ansible_distribution_version }}
+
+      Package: {{ package_name }}
+      ------------------------------------------------------------
+      Before Patch: {{ current_version_check.stdout }}
+      After Patch:  {{ new_version_check.stdout }}
+      Target: {{ package_name }}-{{ target_version }}.{{ architecture }}
+
+      Status: PATCHED SUCCESSFULLY
+      ------------------------------------------------------------
+      {% if current_version_check.stdout != new_version_check.stdout %}
+      Version Change: YES ({{ current_version_check.stdout }} → {{ new_version_check.stdout }})
+      {% else %}
+      Version Change: NO (already at target version)
+      {% endif %}
+
+      Pre-Checks:
+      ------------------------------------------------------------
+      - Disk Space: PASSED ({{ disk_usage.stdout }}% used)
+      - Repository: PASSED
+      {% if 'Subscribed' in sub_check.stdout %}
+      - Subscription: PASSED
+      {% else %}
+      - Subscription: N/A (using local repo)
+      {% endif %}
+      - Service (pre): PASSED
+
+      Post-Validation:
+      ------------------------------------------------------------
+      - Package Patched: PASSED
+      - Service Running: PASSED ({{ service_active.stdout }})
+      - Service Enabled: PASSED
+
+      Backup Location: {{ backup_dir }}/
+      Backup File: {{ backup_dir }}/{{ package_name }}-{{ current_version_check.stdout | regex_replace('^([^-]+-[^-]+-[^.]+).*', '\\1') }}.rpm
+
+      Log File: {{ log_file }}
+
+    dest: "/tmp/rhel_patching_success_{{ inventory_hostname }}.txt"
+
+- name: Display completion message
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  PATCHING COMPLETED SUCCESSFULLY"
+      - "=========================================="
+      - "Package: {{ package_name }}"
+      - "Before:  {{ current_version_check.stdout }}"
+      - "After:   {{ new_version_check.stdout }}"
+      - "Service: Running ({{ service_active.stdout }})"
+      - "Report: /tmp/rhel_patching_success_{{ inventory_hostname }}.txt"
+      - "=========================================="

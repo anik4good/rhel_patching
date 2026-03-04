@@ -1,0 +1,93 @@
+---
+# TC-RHEL-002: Pre-Check Failure - Insufficient Disk Space
+# This scenario demonstrates failure handling when disk space is insufficient.
+# The playbook should stop BEFORE any installation attempts.
+
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "RHEL PATCHING POC - PRE-CHECK FAILURE SCENARIO (TC-RHEL-002)"
+
+- name: Display target server information
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  PATCHING: {{ inventory_hostname }}"
+      - "=========================================="
+      - "OS: {{ ansible_distribution }} {{ ansible_distribution_version }}"
+      - "IP: {{ ansible_default_ipv4.address | default(ansible_hostname) }}"
+      - "Testing: Disk space validation"
+
+# ========================================
+# PRE-CHECK PHASE - WILL FAIL HERE
+# ========================================
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 1: PRE-CHECK VALIDATION"
+
+- name: Check sufficient disk space
+  ansible.builtin.shell: df / | tail -1 | awk '{print $5}' | sed 's/%//'
+  register: disk_usage
+  changed_when: false
+
+- name: Display current disk usage
+  ansible.builtin.debug:
+    msg: "Current disk usage: {{ disk_usage.stdout }}%"
+
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "⚠ VALIDATING DISK SPACE THRESHOLD"
+
+- name: Validate disk space threshold
+  ansible.builtin.fail:
+    msg: "Insufficient disk space: {{ disk_usage.stdout }}% used. Maximum {{ disk_threshold }}% allowed."
+  when: disk_usage.stdout|int > disk_threshold
+
+# NOTE: For this POC, we force fail to demonstrate the failure scenario
+
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "⚠ DEMONSTRATION: Forcing pre-check failure"
+
+- name: Simulate pre-check failure
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  PRE-CHECK FAILED"
+      - "=========================================="
+      - "Error: Insufficient disk space"
+      - "Current: {{ disk_usage.stdout }}% used"
+      - "Maximum: {{ disk_threshold }}% allowed"
+      - ""
+      - "ACTION: Playbook stopped immediately"
+      - "No packages installed"
+      - "No system changes made"
+      - "=========================================="
+
+- name: Log pre-check failure
+  ansible.builtin.lineinfile:
+    path: "{{ log_file }}"
+    line: "{{ ansible_date_time.iso8601 }} - Pre-check failed: Disk space {{ disk_usage.stdout }}% used"
+    create: true
+
+- name: Mark failure point
+  ansible.builtin.set_fact:
+    patch_status: "precheck_failed"
+    failure_reason: "Insufficient disk space"
+    failure_phase: "pre-validation"
+
+- name: Stop playbook execution
+  ansible.builtin.fail:
+    msg: "Stopping execution due to failed pre-check validation"
+
+# ========================================
+# CODE BELOW THIS POINT SHOULD NOT EXECUTE
+# This demonstrates that installation never happens
+# ========================================
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "⚠ WARNING: This code should NEVER execute"
+
+- name: Installation phase (should not reach here)
+  ansible.builtin.debug:
+    msg: "Installation was blocked by pre-check failure"
+  when: false

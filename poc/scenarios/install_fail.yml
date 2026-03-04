@@ -1,0 +1,247 @@
+---
+# TC-RHEL-003: Installation Failure - Dependency Conflict
+# This scenario demonstrates the block/rescue structure when package
+# installation fails due to dependency conflicts.
+
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "RHEL PATCHING POC - INSTALLATION FAILURE SCENARIO (TC-RHEL-003)"
+
+- name: Display target server information
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  PATCHING: {{ inventory_hostname }}"
+      - "=========================================="
+      - "OS: {{ ansible_distribution }} {{ ansible_distribution_version }}"
+      - "IP: {{ ansible_default_ipv4.address | default(ansible_hostname) }}"
+      - "Testing: Installation with dependency conflict"
+
+# ========================================
+# PRE-CHECK PHASE (All pass)
+# ========================================
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 1: PRE-CHECK VALIDATION"
+
+- name: Check sufficient disk space
+  ansible.builtin.shell: df / | tail -1 | awk '{print $5}' | sed 's/%//'
+  register: disk_usage
+  changed_when: false
+  failed_when: disk_usage.stdout|int > 90
+
+- name: Display disk usage status
+  ansible.builtin.debug:
+    msg: "✓ Disk space check passed: {{ disk_usage.stdout }}% used"
+
+- name: Verify repository accessible
+  ansible.builtin.command: dnf repolist
+  register: repo_check
+  failed_when: repo_check.rc != 0
+  changed_when: false
+
+- name: Display repository status
+  ansible.builtin.debug:
+    msg: "✓ Repository accessible"
+
+# ========================================
+# REPOSITORY SWITCH PHASE (Optional - 9.4 → 9.7)
+# ========================================
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 1.5: REPOSITORY SWITCH (9.4 → 9.7)"
+
+- name: Check if custom 9.4/9.7 repos are configured
+  ansible.builtin.shell: |
+    grep -q "rhel-9\.[47]" /etc/yum.repos.d/*.repo 2>/dev/null && echo "found" || echo "not_found"
+  register: custom_repos_check
+  changed_when: false
+
+- name: Display current repository configuration
+  ansible.builtin.shell: dnf repolist
+  register: current_repos
+  changed_when: false
+
+- name: Show current enabled repos
+  ansible.builtin.debug:
+    msg: "Current repos:\n{{ current_repos.stdout }}"
+
+- name: Disable RHEL 9.4 repositories (if custom repos configured)
+  ansible.builtin.command: dnf config-manager --set-disabled rhel-9.4-*
+  register: disable_94
+  failed_when: false
+  changed_when: false
+  when: custom_repos_check.stdout == "found"
+
+- name: Enable RHEL 9.7 repositories (if custom repos configured)
+  ansible.builtin.command: dnf config-manager --set-enabled rhel-9.7-*
+  register: enable_97
+  failed_when: false
+  changed_when: false
+  when: custom_repos_check.stdout == "found"
+
+- name: Display repository switch result
+  ansible.builtin.debug:
+    msg: "{% if custom_repos_check.stdout == 'found' %}✓ Repository switch completed (9.4 → 9.7){% else %}⚠ Using default repositories (no 9.4/9.7 repos configured){% endif %}"
+
+- name: Clean DNF cache after repo switch
+  ansible.builtin.command: dnf clean all
+  changed_when: false
+
+# ========================================
+# BACKUP PHASE
+# ========================================
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 2: BACKUP CREATION"
+
+- name: Create backup directory
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0755'
+
+- name: Backup current package
+  ansible.builtin.shell: |
+    if rpm -q {{ package_name }} >/dev/null 2>&1; then
+      find /var/lib/rpm -name "{{ package_name }}-*.rpm" -exec cp {} {{ backup_dir }}/ \;
+      echo "Backup created"
+    else
+      echo "Package not installed, no backup needed"
+    fi
+  register: backup_result
+  changed_when: "'Backup created' in backup_result.stdout"
+
+- name: Display backup status
+  ansible.builtin.debug:
+    msg: "✓ Backup created at {{ backup_dir }}/"
+
+# ========================================
+# INSTALLATION PHASE - WILL FAIL HERE
+# ========================================
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 3: PACKAGE INSTALLATION (with block/rescue)"
+
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "⚠ DEMONSTRATION: Simulating dependency conflict"
+
+- name: Attempt package installation
+  block:
+    - name: Display installation attempt
+      ansible.builtin.debug:
+        msg: "Attempting to install: {{ package_name }}-{{ target_version }}"
+
+    - name: Simulate dependency conflict
+      ansible.builtin.shell: |
+        # This simulates a dependency resolution failure
+        echo "Error: Dependency Resolution Failed"
+        echo "  Problem: package {{ package_name }}-{{ target_version }} requires libssl >= 1.1.1"
+        echo "  - cannot install both libssl-1.0.2 and libssl-1.1.1"
+        exit 1
+      register: install_result
+      ignore_errors: false
+
+    - name: This should not execute
+      ansible.builtin.debug:
+        msg: "Installation completed"
+      when: false
+
+  rescue:
+    - name: ===========================================
+      ansible.builtin.debug:
+        msg: "⚠ RESCUE BLOCK ACTIVATED"
+
+    - name: Log installation failure
+      ansible.builtin.debug:
+        msg:
+          - "=========================================="
+          - "  INSTALLATION FAILED"
+          - "=========================================="
+          - "Error: Dependency Resolution Failed"
+          - "Problem: package {{ package_name }}-{{ target_version }}"
+          - "         requires libssl >= 1.1.1"
+          - "- cannot install both libssl-1.0.2 and libssl-1.1.1"
+          - ""
+          - "ACTION: Rescue block handling error"
+          - "=========================================="
+
+    - name: Capture error details
+      ansible.builtin.set_fact:
+        patch_status: "installation_failed"
+        failed_task: "Install security updates"
+        error_message: "Dependency Resolution Failed: package {{ package_name }}-{{ target_version }} requires libssl >= 1.1.1"
+        timestamp: "{{ ansible_date_time.iso8601 }}"
+
+    - name: Log failure to file
+      ansible.builtin.lineinfile:
+        path: "{{ log_file }}"
+        line: "{{ ansible_date_time.iso8601 }} - Installation failed: Dependency conflict for {{ package_name }}"
+        create: true
+
+    - name: Mark host as failed
+      ansible.builtin.set_fact:
+        patch_failure_details:
+          host: "{{ inventory_hostname }}"
+          failed_task: "Install security updates"
+          error_message: "{{ error_message }}"
+          timestamp: "{{ ansible_date_time.iso8601 }}"
+
+    - name: Display failure summary
+      ansible.builtin.debug:
+        msg:
+          - "✓ Error logged"
+          - "✓ Host marked as failed"
+          - "✓ Backup preserved"
+          - ""
+          - "Stopping execution - no further hosts will be patched"
+
+    - name: Stop further execution
+      meta: end_play
+
+  always:
+    - name: ===========================================
+      ansible.builtin.debug:
+        msg: "⚠ ALWAYS BLOCK: Cleanup actions"
+
+    - name: Always collect logs
+      ansible.builtin.debug:
+        msg: "✓ Installation logs collected"
+
+    - name: Always preserve backup
+      ansible.builtin.debug:
+        msg: "✓ Backup preserved at {{ backup_dir }}/"
+
+    - name: Create failure report
+      ansible.builtin.copy:
+        content: |
+          Installation Failure Report
+          ============================
+          Date: {{ ansible_date_time.iso8601 }}
+          Server: {{ inventory_hostname }}
+
+          Status: INSTALLATION_FAILED
+
+          Error Details:
+          - Task: {{ failed_task }}
+          - Error: {{ error_message }}
+          - Timestamp: {{ timestamp }}
+
+          Backup Preserved: Yes
+          Backup Location: {{ backup_dir }}/
+
+          Recovery Options:
+          1. Resolve dependency conflict
+          2. Rollback from backup: rpm -Uvh --force {{ backup_dir }}/{{ package_name }}-*.rpm
+          3. Revert to previous Content View
+
+        dest: "/tmp/rhel_patching_install_fail_{{ inventory_hostname }}.txt"
+
+# ========================================
+# CODE BELOW SHOULD NOT EXECUTE
+# ========================================
+- name: Warning - should not reach here
+  ansible.builtin.debug:
+    msg: "⚠ WARNING: Post-validation code did not execute (stopped by rescue)"
+  when: false
