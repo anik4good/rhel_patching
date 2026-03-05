@@ -1798,3 +1798,206 @@ Document all created files and next steps for OS patching POC"
 ---
 
 **End of Implementation Plan**
+
+---
+
+## Task 9: Create HTML report generation template
+
+**Files:**
+- Create: `poc_os/templates/report.html.j2`
+
+**Step 1: Create templates directory**
+
+```bash
+mkdir -p poc_os/templates
+```
+
+**Step 2: Create HTML report template**
+
+```bash
+cat > poc_os/templates/report.html.j2 << 'HTMLEOF'
+<!DOCTYPE html>
+<html>
+<head>
+    <title>RHEL OS Patching Report</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; font-size: 14px; }
+        .container { max-width: 1400px; margin: 0 auto; background: white; padding: 20px; border: 1px solid #ddd; }
+        h1 { color: #333; border-bottom: 3px solid #0066cc; padding-bottom: 10px; }
+        h2 { color: #555; margin-top: 30px; border-bottom: 1px solid #ddd; padding-bottom: 5px; }
+        .metadata { background: #f0f0f0; padding: 12px; margin: 10px 0; font-size: 13px; border-left: 4px solid #0066cc; }
+        .summary-table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 13px; }
+        .summary-table th, .summary-table td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+        .summary-table th { background: #0066cc; color: white; font-weight: bold; }
+        .summary-table tr:nth-child(even) { background: #f9f9f9; }
+        .status-success { color: #008000; font-weight: bold; }
+        .status-failed { color: #cc0000; font-weight: bold; }
+        .patch-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
+        .patch-table th { background: #666; color: white; padding: 8px; text-align: left; border: 1px solid #444; }
+        .patch-table td { border: 1px solid #ddd; padding: 8px; }
+        .patch-table tr:nth-child(even) { background: #f5f5f5; }
+        .version-before { color: #cc0000; }
+        .version-after { color: #008000; font-weight: bold; }
+        .arrow { color: #0066cc; font-weight: bold; }
+        .kernel-row { background: #fff4e6; font-weight: bold; }
+        .security-row { background: #ffe6e6; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🐴 RHEL OS Patching Report - {{ scenario_name | upper }}</h1>
+
+        <div class="metadata">
+            <strong>Generated:</strong> {{ ansible_date_time.iso8601 }} |
+            <strong>Server:</strong> {{ inventory_hostname }} |
+            <strong>Scenario:</strong> {{ scenario_name | upper }}
+        </div>
+
+        <h2>Summary</h2>
+        <table class="summary-table">
+            <tr>
+                <th>Metric</th>
+                <th>Value</th>
+            </tr>
+            <tr>
+                <td><strong>Status</strong></td>
+                <td>{% if patch_status == 'success' %}<span class="status-success">SUCCESS</span>{% else %}<span class="status-failed">FAILED</span>{% endif %}</td>
+            </tr>
+            <tr>
+                <td><strong>OS Version Before</strong></td>
+                <td>{{ version_before | default('N/A') }}</td>
+            </tr>
+            <tr>
+                <td><strong>OS Version After</strong></td>
+                <td>{{ version_after | default('N/A') }}</td>
+            </tr>
+            <tr>
+                <td><strong>Kernel Before</strong></td>
+                <td class="version-before">{{ kernel_before | default('N/A') }}</td>
+            </tr>
+            <tr>
+                <td><strong>Kernel After</strong></td>
+                <td class="version-after">{{ kernel_after | default('N/A') }}</td>
+            </tr>
+            <tr>
+                <td><strong>Reboot Required</strong></td>
+                <td>{{ 'YES' if reboot_required else 'NO' }}</td>
+            </tr>
+        </table>
+
+        {% if patch_status == 'success' %}
+        <h2>Package Updates</h2>
+        <div class="server-section">
+            <table class="patch-table">
+                <tr>
+                    <th style="width: 25%">Package Name</th>
+                    <th style="width: 20%">Version Before</th>
+                    <th style="width: 5%"></th>
+                    <th style="width: 20%">Version After</th>
+                    <th style="width: 10%">Type</th>
+                </tr>
+                <tr class="kernel-row">
+                    <td><strong>kernel</strong></td>
+                    <td class="version-before">{{ kernel_before }}</td>
+                    <td class="arrow">→</td>
+                    <td class="version-after">{{ kernel_after }}</td>
+                    <td>KERNEL</td>
+                </tr>
+                <tr class="security-row">
+                    <td><strong>glibc</strong></td>
+                    <td class="version-before">{{ glibc_before | default('Updated') }}</td>
+                    <td class="arrow">→</td>
+                    <td class="version-after">{{ glibc_after | default('Updated') }}</td>
+                    <td>SECURITY</td>
+                </tr>
+                <tr class="security-row">
+                    <td><strong>openssl</strong></td>
+                    <td class="version-before">{{ openssl_before | default('Updated') }}</td>
+                    <td class="arrow">→</td>
+                    <td class="version-after">{{ openssl_after | default('Updated') }}</td>
+                    <td>SECURITY</td>
+                </tr>
+                <tr>
+                    <td><strong>systemd</strong></td>
+                    <td class="version-before">{{ systemd_before | default('Updated') }}</td>
+                    <td class="arrow">→</td>
+                    <td class="version-after">{{ systemd_after | default('Updated') }}</td>
+                    <td>BUGFIX</td>
+                </tr>
+            </table>
+        </div>
+        {% endif %}
+
+        <div class="metadata" style="margin-top: 30px;">
+            <strong>Generated by:</strong> Ansible RHEL OS Patching POC |
+            <strong>Target Version:</strong> RHEL {{ target_version }}
+        </div>
+    </div>
+</body>
+</html>
+HTMLEOF
+```
+
+**Step 3: Add report generation to success.yml**
+
+Add these tasks to success.yml after the final validation section:
+
+```yaml
+- name: Get package versions for HTML report
+  ansible.builtin.shell: |
+    rpm -q glibc --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q openssl --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q systemd --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+  register: package_versions
+  changed_when: false
+
+- name: Set package version facts
+  ansible.builtin.set_fact:
+    glibc_after: "{{ package_versions.stdout_lines[0] | default('Updated') }}"
+    openssl_after: "{{ package_versions.stdout_lines[1] | default('Updated') }}"
+    systemd_after: "{{ package_versions.stdout_lines[2] | default('Updated') }}"
+
+- name: Generate HTML report
+  ansible.builtin.template:
+    src: templates/report.html.j2
+    dest: "/tmp/rhel_os_patching_report_{{ inventory_hostname }}.html"
+    mode: '0644'
+  vars:
+    scenario_name: "success"
+    patch_status: "success"
+    version_before: "{{ version_before.stdout }}"
+    version_after: "{{ version_final.stdout }}"
+    kernel_before: "{{ ansible_kernel }}"
+    kernel_after: "{{ kernel_version.stdout }}"
+    reboot_required: "{{ reboot_required.rc != 0 }}"
+    target_version: "{{ target_version }}"
+
+- name: Display report location
+  ansible.builtin.debug:
+    msg: "✓ HTML report generated: /tmp/rhel_os_patching_report_{{ inventory_hostname }}.html"
+```
+
+**Step 4: Verify template created**
+
+```bash
+ls -la poc_os/templates/
+```
+
+Expected: Shows report.html.j2
+
+**Step 5: Commit**
+
+```bash
+git add poc_os/templates/report.html.j2
+git commit -m "feat(poc_os): add HTML report generation template
+
+Add professional HTML report for OS patching results:
+- Summary table with before/after versions
+- Package updates with version comparison
+- Kernel updates highlighted (yellow)
+- Security updates highlighted (red)
+- Color-coded status indicators
+
+Matches client mock report format for demos"
+```
+
