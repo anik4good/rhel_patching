@@ -1,0 +1,193 @@
+---
+# TC-OS-003: Upgrade Failure Mid-Process
+# This scenario demonstrates handling when DNF upgrade fails
+
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "RHEL OS PATCHING POC - UPGRADE FAILURE SCENARIO (TC-OS-003)"
+
+- name: Display target server information
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  OS UPGRADE: {{ inventory_hostname }}"
+      - "=========================================="
+      - "OS: {{ ansible_distribution }} {{ ansible_distribution_version }}"
+      - "Testing: DNF upgrade failure handling"
+
+# ========================================
+# PRE-CHECK PHASE (all pass)
+# ========================================
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 1: PRE-CHECK VALIDATION"
+
+- name: Get current RHEL version
+  ansible.builtin.shell: cat /etc/redhat-release
+  register: version_before
+  changed_when: false
+
+- name: Display current version
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  CURRENT VERSION"
+      - "=========================================="
+      - "{{ version_before.stdout }}"
+      - "=========================================="
+
+- name: Check sufficient disk space
+  ansible.builtin.shell: df / | tail -1 | awk '{print $5}' | sed 's/%//'
+  register: disk_usage
+  changed_when: false
+  failed_when: disk_usage.stdout|int > disk_threshold
+
+- name: Display disk usage status
+  ansible.builtin.debug:
+    msg: "✓ Disk space check passed: {{ disk_usage.stdout }}% used"
+
+- name: Verify repository accessible (will corrupt if enabled)
+  block:
+    - name: Check repository
+      ansible.builtin.command: dnf repolist
+      register: repo_check
+      changed_when: false
+
+    - name: Display repository status
+      ansible.builtin.debug:
+        msg: "✓ Repository accessible"
+
+  rescue:
+    - name: Repository check failed
+      ansible.builtin.debug:
+        msg: "⚠ Repository not accessible"
+      when: corrupt_repo | default(false)
+
+- name: Display repository status (fallback)
+  ansible.builtin.debug:
+    msg: "{% if corrupt_repo %}⚠ Repository corrupted for testing{% else %}✓ Repository accessible{% endif %}"
+
+# ========================================
+# UPGRADE PHASE (will fail)
+# ========================================
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 2: OS UPGRADE (will fail)"
+
+- name: Clean dnf cache
+  ansible.builtin.command: dnf clean all
+  changed_when: true
+
+- name: Attempt upgrade to RHEL {{ target_version }}
+  block:
+    - name: Upgrade (with potential failure)
+      ansible.builtin.command: dnf upgrade --releasever={{ target_version }} -y
+      register: upgrade_result
+      async: 3600
+      poll: 10
+
+    - name: Display upgrade success
+      ansible.builtin.debug:
+        msg:
+          - "✓ Upgrade completed"
+          - "Changed: {{ upgrade_result.changed }}"
+
+  rescue:
+    - name: ===========================================
+      ansible.builtin.debug:
+        msg: "⚠ UPGRADE FAILED DETECTED"
+
+    - name: Mark as upgrade failure
+      ansible.builtin.set_fact:
+        patch_status: "upgrade_failed"
+        failure_reason: "DNF upgrade command failed"
+        original_version: "{{ version_before.stdout }}"
+
+    - name: Display upgrade failure
+      ansible.builtin.debug:
+        msg:
+          - "=========================================="
+          - "  UPGRADE FAILED"
+          - "=========================================="
+          - "Phase: DNF Upgrade"
+          - "Error: {{ upgrade_result.msg | default('DNF command failed') }}"
+          - "RC: {{ upgrade_result.rc | default('unknown') }}"
+          - ""
+          - "ACTION: Rescue block activated"
+          - "System may be in partial state"
+          - "Rollback may be required"
+          - "=========================================="
+
+    - name: Generate upgrade failure report
+      ansible.builtin.copy:
+        content: |
+          OS Upgrade Failure Report
+          ========================
+          Date: {{ ansible_date_time.iso8601 }}
+          Server: {{ inventory_hostname }}
+
+          Patch Status: UPGRADE_FAILED
+
+          Upgrade Information:
+          - Target: RHEL {{ target_version }}
+          - Original: {{ original_version }}
+          - Phase: DNF Upgrade
+          - Status: FAILED
+
+          Error Details:
+          - Error: {{ upgrade_result.msg | default('DNF command failed') }}
+          - RC: {{ upgrade_result.rc | default('unknown') }}
+
+          Root Cause:
+          {% if corrupt_repo %}
+          Repository metadata corrupted (simulated)
+          {% else %}
+          DNF upgrade failed - see error details
+          {% endif %}
+
+          Possible Causes:
+          - Repository not accessible
+          - Network interruption
+          - Package dependency conflict
+          - Insufficient disk space during unpacking
+
+          Rollback Options:
+          1. VM snapshot revert (recommended)
+          2. Manual intervention
+          3. Contact system administrator
+
+          System State:
+          - May be in partial upgrade state
+          - Original version: {{ original_version }}
+          - Backup/rollback recommended before re-attempt
+        dest: "/tmp/rhel_os_upgrade_fail_{{ inventory_hostname }}.txt"
+
+    - name: Display recovery instructions
+      ansible.builtin.debug:
+        msg:
+          - "=========================================="
+          - "  RECOVERY INSTRUCTIONS"
+          - "=========================================="
+          - "Upgrade failed mid-process"
+          - "System may be in partial state"
+          - ""
+          - "Option 1: VM snapshot revert (RECOMMENDED)"
+          - "  virsh snapshot-revert <domain> <snapshot>"
+          - ""
+          - "Option 2: Manual investigation"
+          - "  Check logs: journalctl -n 100"
+          - "  Check DNF: dnf history"
+          - ""
+          - "Option 3: Re-run upgrade (risky)"
+          - "  dnf upgrade --releasever={{ target_version }}"
+          - "=========================================="
+
+    - name: Log upgrade failure
+      ansible.builtin.lineinfile:
+        path: "{{ log_file }}"
+        line: "{{ ansible_date_time.iso8601 }} - Upgrade FAILED during DNF upgrade to {{ target_version }}"
+        create: true
+
+    - name: Stop execution
+      ansible.builtin.fail:
+        msg: "Stopping execution: OS upgrade failed - system may be in partial state, review logs"
