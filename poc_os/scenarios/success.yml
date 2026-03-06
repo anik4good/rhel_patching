@@ -376,6 +376,11 @@
     krb5_libs_after: "{{ package_versions_after.results[7].stdout | default('unknown') }}"
     coreutils_after: "{{ package_versions_after.results[8].stdout | default('unknown') }}"
     networkmanager_after: "{{ package_versions_after.results[9].stdout | default('unknown') }}"
+- name: Set template variables as strings
+  ansible.builtin.set_fact:
+    version_before_str: "{{ version_before.stdout }}"
+    version_after_str: "{{ version_final.stdout }}"
+
 - name: Generate HTML report
   ansible.builtin.template:
     src: templates/report.html.j2
@@ -384,8 +389,8 @@
   vars:
     scenario_name: "success"
     patch_status: "success"
-    version_before: "{{ version_before.stdout }}"
-    version_after: "{{ version_final.stdout }}"
+    version_before: "{{ version_before_str }}"
+    version_after: "{{ version_after_str }}"
     kernel_before: "{{ kernel_before }}"
     kernel_after: "{{ kernel_after }}"
     glibc_before: "{{ glibc_before }}"
