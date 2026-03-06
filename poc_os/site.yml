@@ -1,9 +1,24 @@
 ---
 # RHEL OS Version Patching POC - Main Playbook
-# Demonstrates 9.0 → 9.4 upgrade with failure handling
+# Demonstrates OS version upgrade with failure handling
+# Supports 3 repository options: satellite, jump_server, subscription_manager
 # Usage: ansible-playbook -i inventory site.yml --tags <scenario>
+#
+# Version selection via tags:
+#   - success_v9.4  : Upgrade to 9.4 (default)
+#   - success_v9.5  : Upgrade to 9.5
+#   - success_v9.6  : Upgrade to 9.6
+#
+# Repository selection via variable:
+#   -e "repo_type=satellite"      : Use Satellite
+#   -e "repo_type=jump_server"    : Use Jump Server (need jump_server_url)
+#   -e "repo_type=subscription_manager" : Use CDN (default)
 
-- name: RHEL OS Patching POC - Success Scenario (TC-OS-001)
+# ========================================
+# SUCCESS SCENARIOS - Different Versions
+# ========================================
+
+- name: RHEL OS Patching POC - Success to 9.4 (Default)
   hosts: all
   become: true
   serial: 1
@@ -11,16 +26,83 @@
   vars:
     current_version: "9.0"
     target_version: "9.4"
+    repo_type: "{{ repo_type | default('subscription_manager') }}"
+    jump_server_url: "{{ jump_server_url | default('http://jump-server.example.com') }}"
     disk_threshold: 90
     reboot_timeout: 600
     pre_reboot_delay: 10
-    log_file: /var/log/rhel_os_upgrade.log
-    summary_file: /tmp/rhel_os_upgrade_summary_{{ inventory_hostname }}.txt
+    log_file: /var/log/rhel_os_upgrade_9.4.log
+    summary_file: /tmp/rhel_os_upgrade_summary_{{ inventory_hostname }}_9.4.txt
   tasks:
     - ansible.builtin.include_tasks: scenarios/success.yml
   tags:
     - success
+    - success_v9.4
     - all_scenarios
+
+- name: RHEL OS Patching POC - Success to 9.5
+  hosts: all
+  become: true
+  serial: 1
+  max_fail_percentage: 0
+  vars:
+    current_version: "9.0"
+    target_version: "9.5"
+    repo_type: "{{ repo_type | default('subscription_manager') }}"
+    jump_server_url: "{{ jump_server_url | default('http://jump-server.example.com') }}"
+    disk_threshold: 90
+    reboot_timeout: 600
+    pre_reboot_delay: 10
+    log_file: /var/log/rhel_os_upgrade_9.5.log
+    summary_file: /tmp/rhel_os_upgrade_summary_{{ inventory_hostname }}_9.5.txt
+  tasks:
+    - ansible.builtin.include_tasks: scenarios/success.yml
+  tags:
+    - success_v9.5
+
+- name: RHEL OS Patching POC - Success to 9.6
+  hosts: all
+  become: true
+  serial: 1
+  max_fail_percentage: 0
+  vars:
+    current_version: "9.0"
+    target_version: "9.6"
+    repo_type: "{{ repo_type | default('subscription_manager') }}"
+    jump_server_url: "{{ jump_server_url | default('http://jump-server.example.com') }}"
+    disk_threshold: 90
+    reboot_timeout: 600
+    pre_reboot_delay: 10
+    log_file: /var/log/rhel_os_upgrade_9.6.log
+    summary_file: /tmp/rhel_os_upgrade_summary_{{ inventory_hostname }}_9.6.txt
+  tasks:
+    - ansible.builtin.include_tasks: scenarios/success.yml
+  tags:
+    - success_v9.6
+
+- name: RHEL OS Patching POC - Success to 9.7
+  hosts: all
+  become: true
+  serial: 1
+  max_fail_percentage: 0
+  vars:
+    current_version: "9.0"
+    target_version: "9.7"
+    repo_type: "{{ repo_type | default('subscription_manager') }}"
+    jump_server_url: "{{ jump_server_url | default('http://jump-server.example.com') }}"
+    disk_threshold: 90
+    reboot_timeout: 600
+    pre_reboot_delay: 10
+    log_file: /var/log/rhel_os_upgrade_9.7.log
+    summary_file: /tmp/rhel_os_upgrade_summary_{{ inventory_hostname }}_9.7.txt
+  tasks:
+    - ansible.builtin.include_tasks: scenarios/success.yml
+  tags:
+    - success_v9.7
+
+# ========================================
+# FAILURE SCENARIOS (use 9.4 as default)
+# ========================================
 
 - name: RHEL OS Patching POC - Pre-Check Failure (TC-OS-002)
   hosts: all
@@ -29,6 +111,8 @@
   vars:
     current_version: "9.0"
     target_version: "9.4"
+    repo_type: "{{ repo_type | default('subscription_manager') }}"
+    jump_server_url: "{{ jump_server_url | default('http://jump-server.example.com') }}"
     disk_threshold: 90
     simulate_disk_full: true
     simulated_disk_usage: 95
@@ -46,6 +130,8 @@
   vars:
     current_version: "9.0"
     target_version: "9.4"
+    repo_type: "{{ repo_type | default('subscription_manager') }}"
+    jump_server_url: "{{ jump_server_url | default('http://jump-server.example.com') }}"
     disk_threshold: 90
     corrupt_repo: true
     log_file: /var/log/rhel_os_upgrade_fail.log
