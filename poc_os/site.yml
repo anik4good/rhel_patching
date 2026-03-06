@@ -9,17 +9,55 @@
 #   -e "repo_type=satellite"    : Use Satellite (already configured)
 #   -e "repo_type=jump"         : Use Jump Server (already configured)
 #
-# Version selection via tags:
-#   - success (v9.4 default): Upgrade to 9.4
-#   - success_v9.5: Upgrade to 9.5
-#   - success_v9.6: Upgrade to 9.6
-#   - success_v9.7: Upgrade to 9.7
+# Version selection via variable (FLEXIBLE - any version):
+#   -e "target_version=9.1"     : Upgrade to 9.1
+#   -e "target_version=9.2"     : Upgrade to 9.2
+#   -e "target_version=9.3"     : Upgrade to 9.3
+#   -e "target_version=9.4"     : Upgrade to 9.4 (default)
+#   -e "target_version=9.5"     : Upgrade to 9.5
+#   -e "target_version=9.6"     : Upgrade to 9.6
+#   -e "target_version=9.7"     : Upgrade to 9.7
+#   -e "target_version=9.8"     : Upgrade to 9.8 (future)
+#   -e "target_version=9.9"     : Upgrade to 9.9 (future)
+#   -e "target_version=9.10"    : Upgrade to 9.10 (future)
+#
+# Examples:
+#   ansible-playbook -i inventory site.yml --tags success -e "target_version=9.1 repo_type=jump"
+#   ansible-playbook -i inventory site.yml --tags success -e "target_version=9.2 repo_type=satellite"
+#   ansible-playbook -i inventory site.yml --tags success -e "target_version=9.3 repo_type=cdn"
 
 # ========================================
-# SUCCESS SCENARIOS - Different Versions
+# SUCCESS SCENARIO - FLEXIBLE VERSION
 # ========================================
 
-- name: RHEL OS Patching POC - Success to 9.4 (Default)
+- name: RHEL OS Patching POC - Success (Any Version)
+  hosts: all
+  become: true
+  serial: 1
+  max_fail_percentage: 0
+  vars:
+    current_version: "9.0"
+    target_version: "{{ target_version | default('9.4') }}"
+    repo_type: "{{ repo_type | default('cdn') }}"
+    disk_threshold: 90
+    reboot_timeout: 600
+    pre_reboot_delay: 10
+    log_file: /var/log/rhel_os_upgrade_{{ target_version | default('9.4') }}.log
+    summary_file: /tmp/rhel_os_upgrade_summary_{{ inventory_hostname }}_{{ target_version | default('9.4') }}.txt
+  tasks:
+    - ansible.builtin.include_tasks: scenarios/success.yml
+  tags:
+    - success
+    - all_scenarios
+
+# ========================================
+# BACKWARDS COMPATIBILITY - Specific version tags
+# ========================================
+# NOTE: These are kept for backwards compatibility.
+# RECOMMENDED: Use the flexible success tag with target_version variable instead.
+# Example: ansible-playbook -i inventory site.yml --tags success -e "target_version=9.4"
+
+- name: RHEL OS Patching POC - Success to 9.4
   hosts: all
   become: true
   serial: 1
@@ -36,9 +74,7 @@
   tasks:
     - ansible.builtin.include_tasks: scenarios/success.yml
   tags:
-    - success
     - success_v9.4
-    - all_scenarios
 
 - name: RHEL OS Patching POC - Success to 9.5
   hosts: all
