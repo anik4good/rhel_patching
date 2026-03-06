@@ -193,8 +193,6 @@
 - name: Upgrade to RHEL {{ target_version }}
   ansible.builtin.command: dnf upgrade --releasever={{ target_version }} -y
   register: upgrade_result
-  async: 3600
-  poll: 10
 
 - name: Display upgrade result
   ansible.builtin.debug:
