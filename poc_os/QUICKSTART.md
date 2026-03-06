@@ -307,3 +307,98 @@ virsh reboot <domain>
 ---
 
 **End of Quick Start Guide**
+
+---
+
+## Version Selection (NEW!)
+
+### Available Target Versions
+
+| Tag | Version | Description |
+|-----|---------|-------------|
+| `success` | 9.4 | Default - upgrade to 9.4 |
+| `success_v9.4` | 9.4 | Explicit - upgrade to 9.4 |
+| `success_v9.5` | 9.5 | Upgrade to 9.5 |
+| `success_v9.6` | 9.6 | Upgrade to 9.6 |
+| `success_v9.7` | 9.7 | Upgrade to 9.7 |
+
+### Version Selection Examples
+
+```bash
+# Default (9.4)
+ansible-playbook -i inventory site.yml --tags success
+
+# Upgrade to 9.5
+ansible-playbook -i inventory site.yml --tags success_v9.5
+
+# Upgrade to 9.6
+ansible-playbook -i inventory site.yml --tags success_v9.6
+
+# Upgrade to 9.7
+ansible-playbook -i inventory site.yml --tags success_v9.7
+```
+
+---
+
+## Repository Type Selection (NEW!)
+
+### 3 Repository Options
+
+| Type | Variable | Description | Example |
+|------|----------|-------------|---------|
+| **Subscription Manager** | `subscription_manager` | Red Hat CDN (default) | Most environments |
+| **Satellite** | `satellite` | Red Hat Satellite | Managed environments |
+| **Jump Server** | `jump_server` | Local repository server | Air-gapped networks |
+
+### Repository Examples
+
+```bash
+# Default - Subscription Manager (CDN)
+ansible-playbook -i inventory site.yml --tags success
+
+# Satellite
+ansible-playbook -i inventory site.yml --tags success \
+  -e "repo_type=satellite"
+
+# Jump Server (local repo)
+ansible-playbook -i inventory site.yml --tags success_v9.5 \
+  -e "repo_type=jump_server" \
+  -e "jump_server_url=http://jump-server.local/repos"
+```
+
+---
+
+## Combined Examples
+
+### Upgrade to 9.5 using Satellite
+
+```bash
+ansible-playbook -i inventory site.yml --tags success_v9.5 \
+  -e "repo_type=satellite"
+```
+
+### Upgrade to 9.6 using Jump Server
+
+```bash
+ansible-playbook -i inventory site.yml --tags success_v9.6 \
+  -e "repo_type=jump_server" \
+  -e "jump_server_url=http://repo.example.com/rhel"
+```
+
+### Upgrade to 9.7 using CDN (default)
+
+```bash
+ansible-playbook -i inventory site.yml --tags success_v9.7
+```
+
+---
+
+## Variable Reference
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `repo_type` | `subscription_manager` | Repository type |
+| `jump_server_url` | `http://jump-server.example.com` | Jump server URL |
+| `target_version` | `9.4` | Target OS version |
+| `disk_threshold` | `90` | Fail if disk usage > 90% |
+
