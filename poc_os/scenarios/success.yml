@@ -1,0 +1,232 @@
+---
+# TC-OS-001: Successful OS Upgrade 9.0 → 9.4
+# This scenario demonstrates complete OS version upgrade with reboot management
+
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "RHEL OS PATCHING POC - SUCCESS SCENARIO (TC-OS-001)"
+
+- name: Display target server information
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  OS UPGRADE: {{ inventory_hostname }}"
+      - "=========================================="
+      - "OS: {{ ansible_distribution }} {{ ansible_distribution_version }}"
+      - "Kernel: {{ ansible_kernel }}"
+      - "IP: {{ ansible_default_ipv4.address | default(ansible_hostname) }}"
+      - "Target: Upgrade to RHEL {{ target_version }}"
+
+# ========================================
+# PRE-CHECK PHASE
+# ========================================
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 1: PRE-CHECK VALIDATION"
+
+- name: Get current RHEL version BEFORE upgrade
+  ansible.builtin.shell: cat /etc/redhat-release
+  register: version_before
+  changed_when: false
+
+- name: Display current version
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  CURRENT VERSION (BEFORE UPGRADE)"
+      - "=========================================="
+      - "{{ version_before.stdout }}"
+      - "=========================================="
+
+- name: Check sufficient disk space
+  ansible.builtin.shell: df / | tail -1 | awk '{print $5}' | sed 's/%//'
+  register: disk_usage
+  changed_when: false
+  failed_when: disk_usage.stdout|int > disk_threshold
+
+- name: Display disk usage status
+  ansible.builtin.debug:
+    msg: "✓ Disk space check passed: {{ disk_usage.stdout }}% used"
+
+- name: Verify repository accessible
+  ansible.builtin.command: dnf repolist
+  register: repo_check
+  failed_when: repo_check.rc != 0
+  changed_when: false
+
+- name: Display repository status
+  ansible.builtin.debug:
+    msg: "✓ Repository accessible"
+
+- name: Check for available updates
+  ansible.builtin.dnf:
+    list: updates
+  register: available_updates
+  changed_when: false
+
+- name: Count available updates
+  ansible.builtin.set_fact:
+    update_count: "{{ available_updates.results | default([]) | length }}"
+
+- name: Display available updates count
+  ansible.builtin.debug:
+    msg: "{{ update_count }} updates available"
+
+# ========================================
+# UPGRADE PHASE
+# ========================================
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 2: OS UPGRADE (9.0 → {{ target_version }})"
+
+- name: Clean dnf cache
+  ansible.builtin.command: dnf clean all
+  changed_when: true
+
+- name: Upgrade to RHEL {{ target_version }}
+  ansible.builtin.command: dnf upgrade --releasever={{ target_version }} -y
+  register: upgrade_result
+  async: 3600
+  poll: 10
+
+- name: Display upgrade result
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  UPGRADE RESULT"
+      - "=========================================="
+      - "Changed: {{ upgrade_result.changed }}"
+      - "RC: {{ upgrade_result.rc | default('N/A') }}"
+      - "=========================================="
+  failed_when: false
+
+# ========================================
+# POST-UPGRADE VALIDATION
+# ========================================
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 3: POST-UPGRADE VALIDATION"
+
+- name: Get new RHEL version AFTER upgrade
+  ansible.builtin.shell: cat /etc/redhat-release
+  register: version_after
+  changed_when: false
+
+- name: Display new version
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  NEW VERSION (AFTER UPGRADE)"
+      - "=========================================="
+      - "{{ version_after.stdout }}"
+      - "=========================================="
+
+- name: Verify kernel version
+  ansible.builtin.shell: uname -r
+  register: kernel_version
+  changed_when: false
+
+- name: Display kernel version
+  ansible.builtin.debug:
+    msg: "Kernel: {{ kernel_version.stdout }}"
+
+- name: Display version comparison
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  UPGRADE SUMMARY"
+      - "=========================================="
+      - "VERSION BEFORE: {{ version_before.stdout }}"
+      - "VERSION AFTER:  {{ version_after.stdout }}"
+      - "KERNEL: {{ kernel_version.stdout }}"
+      - "=========================================="
+
+# ========================================
+# REBOOT CHECK PHASE
+# ========================================
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 4: REBOOT CHECK"
+
+- name: Check if reboot is required
+  ansible.builtin.command: /usr/bin/needs-restarting -r
+  register: reboot_required
+  failed_when: false
+  changed_when: reboot_required.rc != 0
+
+- name: Display reboot status
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  REBOOT STATUS"
+      - "=========================================="
+      - "Reboot Required: {{ 'YES' if reboot_required.rc != 0 else 'NO' }}"
+      - "{% if reboot_required.rc != 0 %}Reason: {{ reboot_required.stdout }}{% endif %}"
+      - "=========================================="
+
+- name: Reboot the server if required
+  ansible.builtin.reboot:
+    msg: "Rebooting after RHEL upgrade to {{ target_version }}"
+    pre_reboot_delay: "{{ pre_reboot_delay }}"
+    reboot_timeout: "{{ reboot_timeout }}"
+  when: reboot_required.rc != 0
+
+- name: Confirm system is back online
+  ansible.builtin.ping:
+  register: ping_result
+  retries: 30
+  delay: 10
+  until: ping_result is succeeded
+
+# ========================================
+# FINAL VALIDATION & REPORTING
+# ========================================
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 5: FINAL VALIDATION"
+
+- name: Get final version (after reboot if occurred)
+  ansible.builtin.shell: cat /etc/redhat-release
+  register: version_final
+  changed_when: false
+
+- name: Display final confirmation
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  UPGRADE COMPLETE"
+      - "=========================================="
+      - "System {{ inventory_hostname }} is back online"
+      - "Final Version: {{ version_final.stdout }}"
+      - "Kernel: {{ kernel_version.stdout }}"
+      - "=========================================="
+
+- name: Create summary file on target
+  ansible.builtin.copy:
+    content: |
+      RHEL {{ target_version }} Upgrade Summary
+      ====================================
+      Date: {{ ansible_date_time.iso8601 }}
+      Server: {{ inventory_hostname }}
+
+      Version Before: {{ version_before.stdout }}
+      Version After:  {{ version_final.stdout }}
+      Kernel Version:  {{ kernel_version.stdout }}
+
+      Reboot Required: {% if reboot_required.rc != 0 %}YES{% else %}NO{% endif %}
+      {% if reboot_required.rc != 0 %}
+      Reboot Reason: {{ reboot_required.stdout }}
+      {% endif %}
+
+      Available Updates: {{ update_count }}
+      Method: dnf upgrade --releasever={{ target_version }}
+
+      Status: SUCCESS
+    dest: "{{ summary_file }}"
+    mode: '0644'
+
+- name: Log successful upgrade
+  ansible.builtin.lineinfile:
+    path: "{{ log_file }}"
+    line: "{{ ansible_date_time.iso8601 }} - OS upgrade SUCCESS: {{ version_before.stdout }} → {{ version_final.stdout }}"
+    create: true
