@@ -1,0 +1,133 @@
+---
+# TC-OS-002: Pre-Check Validation Failure
+# This scenario demonstrates stopping before upgrade when validation fails
+
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "RHEL OS PATCHING POC - PRE-CHECK FAILURE SCENARIO (TC-OS-002)"
+
+- name: Display target server information
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  OS UPGRADE: {{ inventory_hostname }}"
+      - "=========================================="
+      - "OS: {{ ansible_distribution }} {{ ansible_distribution_version }}"
+      - "Testing: Pre-check validation failure"
+
+# ========================================
+# PRE-CHECK PHASE - WILL FAIL HERE
+# ========================================
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 1: PRE-CHECK VALIDATION"
+
+- name: Get current RHEL version
+  ansible.builtin.shell: cat /etc/redhat-release
+  register: version_before
+  changed_when: false
+
+- name: Display current version
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  CURRENT VERSION"
+      - "=========================================="
+      - "{{ version_before.stdout }}"
+      - "=========================================="
+
+- name: Check sufficient disk space (will fail)
+  ansible.builtin.shell: df / | tail -1 | awk '{print $5}' | sed 's/%//'
+  register: disk_usage
+  changed_when: false
+
+- name: Simulate disk space failure if enabled
+  ansible.builtin.set_fact:
+    disk_usage: "{{ simulated_disk_usage }}"
+  when: simulate_disk_full | default(false)
+
+- name: Validate disk space threshold
+  ansible.builtin.fail:
+    msg: "Insufficient disk space: {{ disk_usage.stdout }}% used. Maximum {{ disk_threshold }}% allowed."
+  when: disk_usage.stdout|int > disk_threshold
+
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "⚠ PRE-CHECK FAILED"
+
+- name: Mark as pre-check failure
+  ansible.builtin.set_fact:
+    patch_status: "precheck_failed"
+    failure_reason: "Disk space insufficient"
+    current_usage: "{{ disk_usage.stdout }}%"
+    max_allowed: "{{ disk_threshold }}%"
+
+- name: Display pre-check failure
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  PRE-CHECK VALIDATION FAILED"
+      - "=========================================="
+      - "Check: Disk Space"
+      - "Current: {{ current_usage }} used"
+      - "Maximum: {{ max_allowed }} allowed"
+      - ""
+      - "ACTION: Playbook stopped immediately"
+      - "No upgrade attempted"
+      - "No system changes made"
+      - "=========================================="
+
+- name: Generate pre-check failure report
+  ansible.builtin.copy:
+    content: |
+      Pre-Check Validation Failure Report
+      =====================================
+      Date: {{ ansible_date_time.iso8601 }}
+      Server: {{ inventory_hostname }}
+
+      Patch Status: PRECHECK_FAILED
+
+      Validation Failure:
+      - Check: Disk Space
+      - Current Usage: {{ current_usage }}
+      - Maximum Allowed: {{ max_allowed }}
+      - Status: FAILED
+
+      Root Cause:
+      Insufficient disk space for OS upgrade
+
+      Action Required:
+      1. Free up disk space
+      2. Re-run playbook
+
+      System State:
+      - No changes made
+      - Original OS version: {{ version_before.stdout }}
+      - Upgrade NOT attempted
+    dest: "/tmp/rhel_os_precheck_fail_{{ inventory_hostname }}.txt"
+
+- name: Display recovery instructions
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  RECOVERY INSTRUCTIONS"
+      - "=========================================="
+      - "Issue: Insufficient disk space"
+      - "Current: {{ current_usage }} used"
+      - "Required: At least {{ 100 - disk_threshold|int }}% free"
+      - ""
+      - "Steps to fix:"
+      - "1. Free up disk space"
+      - "2. Verify with: df -h /"
+      - "3. Re-run playbook"
+      - "=========================================="
+
+- name: Log pre-check failure
+  ansible.builtin.lineinfile:
+    path: "{{ log_file }}"
+    line: "{{ ansible_date_time.iso8601 }} - Pre-check FAILED: Disk space {{ current_usage }} > max {{ max_allowed }}"
+    create: true
+
+- name: Stop execution
+  ansible.builtin.fail:
+    msg: "Stopping execution: Pre-check validation failed - insufficient disk space"
