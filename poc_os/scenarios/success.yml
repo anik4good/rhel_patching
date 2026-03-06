@@ -380,7 +380,7 @@
 - name: Generate HTML report
   ansible.builtin.template:
     src: templates/report.html.j2
-    dest: "/tmp/rhel_os_patching_report_{{ inventory_hostname }}.html"
+    dest: "/tmp/rhel_os_patching_report_{{ inventory_hostname }}_{{ ansible_date_time.iso8601 }}.html"
     mode: '0644'
   vars:
     scenario_name: "success"
@@ -411,12 +411,12 @@
 
 - name: Fetch HTML report to local machine
   ansible.builtin.fetch:
-    src: "/tmp/rhel_os_patching_report_{{ inventory_hostname }}.html"
-    dest: "/tmp/rhel_os_patching_report_{{ inventory_hostname }}.html"
+    src: "/tmp/rhel_os_patching_report_{{ inventory_hostname }}_{{ ansible_date_time.iso8601 }}.html"
+    dest: "/tmp/rhel_os_patching_report_{{ inventory_hostname }}_{{ ansible_date_time.iso8601 }}.html"
     flat: true
 
 - name: Display report location
   ansible.builtin.debug:
     msg:
-      - "✓ HTML report generated on {{ inventory_hostname }}: /tmp/rhel_os_patching_report_{{ inventory_hostname }}.html"
-      - "✓ Report downloaded to local machine: /tmp/rhel_os_patching_report_{{ inventory_hostname }}.html"
+      - "✓ HTML report generated on {{ inventory_hostname }}: /tmp/rhel_os_patching_report_{{ inventory_hostname }}_{{ ansible_date_time.iso8601 }}.html"
+      - "✓ Report downloaded to local machine: /tmp/rhel_os_patching_report_{{ inventory_hostname }}_{{ ansible_date_time.iso8601 }}.html"
