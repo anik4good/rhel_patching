@@ -625,3 +625,110 @@ patch_status: "validation_failed"
 ---
 
 **End of Document**
+
+---
+
+## 10. OS Version Patching Test Cases
+
+### TC-OS-001: Successful OS Upgrade (9.0 → 9.4)
+
+| Field | Details |
+|-------|---------|
+| **Test Case ID** | TC-OS-001 |
+| **Title** | Successful OS Minor Version Upgrade |
+| **Type** | Success Scenario |
+| **Priority** | Critical |
+
+#### Test Objective
+
+Verify complete OS upgrade from RHEL 9.0 to 9.4 with reboot management.
+
+#### Pre-Conditions
+
+| Requirement | Status |
+|-------------|--------|
+| RHEL 9.0 system ready | ☐ Verified |
+| RHEL 9.4 repo configured | ☐ Verified |
+| Disk space ≤90% used | ☐ Verified |
+| VM snapshot created | ☐ Verified |
+| SSH connectivity | ☐ Verified |
+
+#### Test Steps
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Run success scenario | Playbook starts |
+| 2 | Pre-check: Disk space | Passes |
+| 3 | Pre-check: Repo access | Passes |
+| 4 | DNF upgrade starts | Begins upgrade |
+| 5 | Upgrade completes | No errors |
+| 6 | Reboot check | Detects if needed |
+| 7 | Reboot (if needed) | System reboots |
+| 8 | Post-reboot validation | System online |
+| 9 | Version verification | Shows 9.4 |
+
+#### Expected Results
+
+- System upgraded to RHEL 9.4
+- Reboot executed if required
+- All services running
+- Summary report created
+
+---
+
+### TC-OS-002: Pre-Check Validation Failure
+
+| Field | Details |
+|-------|---------|
+| **Test Case ID** | TC-OS-002 |
+| **Title** | Pre-Check Failure - Disk Space |
+| **Type** | Failure Scenario |
+| **Priority** | Critical |
+
+#### Test Objective
+
+Verify playbook stops before upgrade when validation fails.
+
+#### Expected Result
+
+```
+TASK [Validate disk space threshold]
+fatal: [host]: FAILED!
+msg: "Insufficient disk space: 95% used. Maximum 90% allowed."
+```
+
+---
+
+### TC-OS-003: Upgrade Failure Mid-Process
+
+| Field | Details |
+|-------|---------|
+| **Test Case ID** | TC-OS-003 |
+| **Title** | Upgrade Failure - DNF Error |
+| **Type** | Failure Scenario |
+| **Priority** | Critical |
+
+#### Test Objective
+
+Verify graceful handling when DNF upgrade fails.
+
+#### Expected Result
+
+- Upgrade failure detected
+- Rescue block activated
+- Failure report generated
+- Rollback instructions provided
+
+---
+
+## Document Control Update
+
+| Version | Date | Changes | Author |
+|---------|------|---------|--------|
+| 1.0 | Mar 3, 2026 | Initial version | Automation Team |
+| 1.1 | Mar 3, 2026 | Reformatted with proper tables | Automation Team |
+| 1.2 | Mar 6, 2026 | Added OS patching scenarios (TC-OS-001 to TC-OS-003) | Automation Team |
+
+---
+
+**End of Document**
