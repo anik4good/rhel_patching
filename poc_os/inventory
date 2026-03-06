@@ -1,0 +1,8 @@
+[rhel_os_poc_servers]
+# rhel-test-01 ansible_host=192.168.1.100 ansible_user=root
+# rhel-test-02 ansible_host=192.168.1.101 ansible_user=root
+
+[rhel_os_poc_servers:vars]
+ansible_become=true
+ansible_become_method=sudo
+ansible_python_interpreter=/usr/bin/python3
