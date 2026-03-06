@@ -310,9 +310,41 @@ virsh reboot <domain>
 
 ---
 
-## Version Selection (NEW!)
+## Version Selection (FLEXIBLE - Any Version!)
 
-### Available Target Versions
+### Primary Method: Using target_version Variable (RECOMMENDED)
+
+**Upgrade to ANY RHEL version by specifying the target_version variable:**
+
+```bash
+# Upgrade to 9.1
+ansible-playbook -i inventory site.yml --tags success -e "target_version=9.1"
+
+# Upgrade to 9.2
+ansible-playbook -i inventory site.yml --tags success -e "target_version=9.2"
+
+# Upgrade to 9.3
+ansible-playbook -i inventory site.yml --tags success -e "target_version=9.3"
+
+# Upgrade to 9.4 (default)
+ansible-playbook -i inventory site.yml --tags success
+
+# Upgrade to 9.5
+ansible-playbook -i inventory site.yml --tags success -e "target_version=9.5"
+
+# Upgrade to 9.6
+ansible-playbook -i inventory site.yml --tags success -e "target_version=9.6"
+
+# Upgrade to 9.7
+ansible-playbook -i inventory site.yml --tags success -e "target_version=9.7"
+
+# Future versions (9.8, 9.9, 9.10, etc.)
+ansible-playbook -i inventory site.yml --tags success -e "target_version=9.8"
+```
+
+### Backwards Compatibility: Version-Specific Tags
+
+Old tags still work but are not recommended:
 
 | Tag | Version | Description |
 |-----|---------|-------------|
@@ -322,21 +354,7 @@ virsh reboot <domain>
 | `success_v9.6` | 9.6 | Upgrade to 9.6 |
 | `success_v9.7` | 9.7 | Upgrade to 9.7 |
 
-### Version Selection Examples
-
-```bash
-# Default (9.4)
-ansible-playbook -i inventory site.yml --tags success
-
-# Upgrade to 9.5
-ansible-playbook -i inventory site.yml --tags success_v9.5
-
-# Upgrade to 9.6
-ansible-playbook -i inventory site.yml --tags success_v9.6
-
-# Upgrade to 9.7
-ansible-playbook -i inventory site.yml --tags success_v9.7
-```
+**Note:** Use the `target_version` variable instead of these tags for maximum flexibility.
 
 ---
 
@@ -368,27 +386,48 @@ ansible-playbook -i inventory site.yml --tags success_v9.5 \
 
 ---
 
-## Combined Examples
+## Combined Examples (NEW FLEXIBLE APPROACH)
+
+### Upgrade to 9.1 using Jump Server
+
+```bash
+ansible-playbook -i inventory site.yml --tags success \
+  -e "target_version=9.1 repo_type=jump"
+```
+
+### Upgrade to 9.2 using Satellite
+
+```bash
+ansible-playbook -i inventory site.yml --tags success \
+  -e "target_version=9.2 repo_type=satellite"
+```
+
+### Upgrade to 9.3 using CDN (default)
+
+```bash
+ansible-playbook -i inventory site.yml --tags success \
+  -e "target_version=9.3"
+```
 
 ### Upgrade to 9.5 using Satellite
 
 ```bash
-ansible-playbook -i inventory site.yml --tags success_v9.5 \
-  -e "repo_type=satellite"
+ansible-playbook -i inventory site.yml --tags success \
+  -e "target_version=9.5 repo_type=satellite"
 ```
 
 ### Upgrade to 9.6 using Jump Server
 
 ```bash
-ansible-playbook -i inventory site.yml --tags success_v9.6 \
-  -e "repo_type=jump_server" \
-  -e "jump_server_url=http://repo.example.com/rhel"
+ansible-playbook -i inventory site.yml --tags success \
+  -e "target_version=9.6 repo_type=jump"
 ```
 
 ### Upgrade to 9.7 using CDN (default)
 
 ```bash
-ansible-playbook -i inventory site.yml --tags success_v9.7
+ansible-playbook -i inventory site.yml --tags success \
+  -e "target_version=9.7"
 ```
 
 ---
