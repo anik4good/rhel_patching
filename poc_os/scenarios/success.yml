@@ -348,7 +348,6 @@
     kernel_before: "{{ ansible_kernel }}"
     kernel_after: "{{ kernel_version.stdout }}"
     reboot_required: "{{ reboot_required.rc != 0 }}"
-    target_version: "{{ target_version }}"
 
 - name: Display report location
   ansible.builtin.debug:
