@@ -1,18 +1,19 @@
 ---
 # RHEL OS Version Patching POC - Main Playbook
 # Demonstrates OS version upgrade with failure handling
-# Supports 3 repository options: satellite, jump_server, subscription_manager
+# Supports 3 repository options: cdn, satellite, jump
 # Usage: ansible-playbook -i inventory site.yml --tags <scenario>
 #
-# Version selection via tags:
-#   - success_v9.4  : Upgrade to 9.4 (default)
-#   - success_v9.5  : Upgrade to 9.5
-#   - success_v9.6  : Upgrade to 9.6
-#
 # Repository selection via variable:
-#   -e "repo_type=satellite"      : Use Satellite
-#   -e "repo_type=jump_server"    : Use Jump Server (need jump_server_url)
-#   -e "repo_type=subscription_manager" : Use CDN (default)
+#   -e "repo_type=cdn"          : Use Red Hat CDN (default)
+#   -e "repo_type=satellite"    : Use Satellite (already configured)
+#   -e "repo_type=jump"         : Use Jump Server (already configured)
+#
+# Version selection via tags:
+#   - success (v9.4 default): Upgrade to 9.4
+#   - success_v9.5: Upgrade to 9.5
+#   - success_v9.6: Upgrade to 9.6
+#   - success_v9.7: Upgrade to 9.7
 
 # ========================================
 # SUCCESS SCENARIOS - Different Versions
@@ -26,8 +27,7 @@
   vars:
     current_version: "9.0"
     target_version: "9.4"
-    repo_type: "{{ repo_type | default('subscription_manager') }}"
-    jump_server_url: "{{ jump_server_url | default('http://jump-server.example.com') }}"
+    repo_type: "{{ repo_type | default('cdn') }}"
     disk_threshold: 90
     reboot_timeout: 600
     pre_reboot_delay: 10
@@ -48,8 +48,7 @@
   vars:
     current_version: "9.0"
     target_version: "9.5"
-    repo_type: "{{ repo_type | default('subscription_manager') }}"
-    jump_server_url: "{{ jump_server_url | default('http://jump-server.example.com') }}"
+    repo_type: "{{ repo_type | default('cdn') }}"
     disk_threshold: 90
     reboot_timeout: 600
     pre_reboot_delay: 10
@@ -68,8 +67,7 @@
   vars:
     current_version: "9.0"
     target_version: "9.6"
-    repo_type: "{{ repo_type | default('subscription_manager') }}"
-    jump_server_url: "{{ jump_server_url | default('http://jump-server.example.com') }}"
+    repo_type: "{{ repo_type | default('cdn') }}"
     disk_threshold: 90
     reboot_timeout: 600
     pre_reboot_delay: 10
@@ -88,8 +86,7 @@
   vars:
     current_version: "9.0"
     target_version: "9.7"
-    repo_type: "{{ repo_type | default('subscription_manager') }}"
-    jump_server_url: "{{ jump_server_url | default('http://jump-server.example.com') }}"
+    repo_type: "{{ repo_type | default('cdn') }}"
     disk_threshold: 90
     reboot_timeout: 600
     pre_reboot_delay: 10
@@ -111,8 +108,7 @@
   vars:
     current_version: "9.0"
     target_version: "9.4"
-    repo_type: "{{ repo_type | default('subscription_manager') }}"
-    jump_server_url: "{{ jump_server_url | default('http://jump-server.example.com') }}"
+    repo_type: "{{ repo_type | default('cdn') }}"
     disk_threshold: 90
     simulate_disk_full: true
     simulated_disk_usage: 95
@@ -130,8 +126,7 @@
   vars:
     current_version: "9.0"
     target_version: "9.4"
-    repo_type: "{{ repo_type | default('subscription_manager') }}"
-    jump_server_url: "{{ jump_server_url | default('http://jump-server.example.com') }}"
+    repo_type: "{{ repo_type | default('cdn') }}"
     disk_threshold: 90
     corrupt_repo: true
     log_file: /var/log/rhel_os_upgrade_fail.log

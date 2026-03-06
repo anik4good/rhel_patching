@@ -1,7 +1,7 @@
 ---
 # TC-OS-001: Successful OS Upgrade
 # This scenario demonstrates complete OS version upgrade with reboot management
-# Supports 3 repository options: satellite, jump_server, subscription_manager
+# Supports 3 repository options: cdn, satellite, jump (all pre-configured)
 
 - name: ===========================================
   ansible.builtin.debug:
@@ -17,7 +17,7 @@
       - "Kernel: {{ ansible_kernel }}"
       - "IP: {{ ansible_default_ipv4.address | default(ansible_hostname) }}"
       - "Target: Upgrade to RHEL {{ target_version }}"
-      - "Repository Option: {{ repo_type | default('subscription_manager') }}"
+      - "Repository: {{ repo_type | default('cdn') | upper }}"
 
 # ========================================
 # PRE-CHECK PHASE
@@ -52,13 +52,40 @@
 
 - name: ===========================================
   ansible.builtin.debug:
-    msg: "PHASE 1.5: REPOSITORY SETUP ({{ repo_type | default('subscription_manager') | upper }})"
+    msg: "PHASE 1.5: REPOSITORY CHECK ({{ repo_type | default('cdn') | upper }})"
 
-- name: Repository setup - Satellite
+- name: Verify repository accessible - CDN
   block:
-    - name: Display Satellite repository setup
+    - name: Display CDN repository check
       ansible.builtin.debug:
-        msg: "Using Satellite repositories"
+        msg: "Using Red Hat CDN repositories"
+
+    - name: Verify subscription status
+      ansible.builtin.command: subscription-manager status
+      register: sub_status
+      changed_when: false
+
+    - name: Display subscription status
+      ansible.builtin.debug:
+        msg: "Subscription Status: {{ sub_status.stdout }}"
+
+    - name: Verify repository accessible
+      ansible.builtin.command: dnf repolist
+      register: repo_check
+      failed_when: repo_check.rc != 0
+      changed_when: false
+
+    - name: Display repository status
+      ansible.builtin.debug:
+        msg: "✓ CDN repositories accessible"
+
+  when: repo_type == "cdn" or repo_type is not defined
+
+- name: Verify repository accessible - Satellite
+  block:
+    - name: Display Satellite repository check
+      ansible.builtin.debug:
+        msg: "Using Satellite repositories (already configured)"
 
     - name: Verify subscription to Satellite
       ansible.builtin.command: subscription-manager status
@@ -81,24 +108,11 @@
 
   when: repo_type == "satellite"
 
-- name: Repository setup - Jump Server
+- name: Verify repository accessible - Jump Server
   block:
-    - name: Display jump server repository setup
+    - name: Display Jump Server repository check
       ansible.builtin.debug:
-        msg: "Using local jump server repositories"
-
-    - name: Configure jump server repository
-      ansible.builtin.yum_repository:
-        name: "rhel-jumpserver-{{ target_version }}"
-        description: "RHEL {{ target_version }} from Jump Server"
-        baseurl: "{{ jump_server_url }}/rhel/{{ target_version }}/BaseOS"
-        enabled: true
-        gpgcheck: no
-      register: jump_repo_result
-
-    - name: Display repository configuration
-      ansible.builtin.debug:
-        msg: "✓ Jump server repository configured"
+        msg: "Using Jump Server repositories (already configured)"
 
     - name: Verify repository accessible
       ansible.builtin.command: dnf repolist
@@ -108,36 +122,9 @@
 
     - name: Display repository status
       ansible.builtin.debug:
-        msg: "✓ Jump server repository accessible"
+        msg: "✓ Jump Server repositories accessible"
 
-  when: repo_type == "jump_server"
-
-- name: Repository setup - Subscription Manager (Default)
-  block:
-    - name: Display subscription manager repository setup
-      ansible.builtin.debug:
-        msg: "Using Red Hat Subscription Manager (default)"
-
-    - name: Verify subscription status
-      ansible.builtin.command: subscription-manager status
-      register: sub_status
-      changed_when: false
-
-    - name: Display subscription status
-      ansible.builtin.debug:
-        msg: "Subscription Status: {{ sub_status.stdout }}"
-
-    - name: Verify repository accessible
-      ansible.builtin.command: dnf repolist
-      register: repo_check
-      failed_when: repo_check.rc != 0
-      changed_when: false
-
-    - name: Display repository status
-      ansible.builtin.debug:
-        msg: "✓ CDN repositories accessible"
-
-  when: repo_type == "subscription_manager" or repo_type is not defined
+  when: repo_type == "jump"
 
 - name: Check for available updates
   ansible.builtin.dnf:
@@ -168,7 +155,7 @@
       - "=========================================="
       - "Current Version: {{ version_before.stdout }}"
       - "Target Version: {{ target_version }}"
-      - "Repository: {{ repo_type | default('subscription_manager') }}"
+      - "Repository: {{ repo_type | default('cdn') }}"
       - "Method: dnf upgrade --releasever={{ target_version }}"
       - "=========================================="
 
@@ -292,7 +279,7 @@
       - "System {{ inventory_hostname }} is back online"
       - "Final Version: {{ version_final.stdout }}"
       - "Kernel: {{ kernel_version.stdout }}"
-      - "Repository Used: {{ repo_type | default('subscription_manager') }}"
+      - "Repository Used: {{ repo_type | default('cdn') }}"
       - "=========================================="
 
 - name: Create summary file on target
@@ -312,10 +299,7 @@
       Reboot Reason: {{ reboot_required.stdout }}
       {% endif %}
 
-      Repository Type: {{ repo_type | default('subscription_manager') }}
-      {% if repo_type == 'jump_server' %}
-      Jump Server URL: {{ jump_server_url | default('N/A') }}
-      {% endif %}
+      Repository Type: {{ repo_type | default('cdn') }}
 
       Available Updates: {{ update_count }}
       Method: dnf upgrade --releasever={{ target_version }}
@@ -327,7 +311,7 @@
 - name: Log successful upgrade
   ansible.builtin.lineinfile:
     path: "{{ log_file }}"
-    line: "{{ ansible_date_time.iso8601 }} - OS upgrade SUCCESS: {{ version_before.stdout }} → {{ version_final.stdout }} via {{ repo_type | default('subscription_manager') }}"
+    line: "{{ ansible_date_time.iso8601 }} - OS upgrade SUCCESS: {{ version_before.stdout }} → {{ version_final.stdout }} via {{ repo_type | default('cdn') }}"
     create: true
 
 # ========================================

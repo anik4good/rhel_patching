@@ -14,7 +14,7 @@
       - "=========================================="
       - "OS: {{ ansible_distribution }} {{ ansible_distribution_version }}"
       - "Testing: Pre-check validation failure"
-      - "Repository: {{ repo_type | default('subscription_manager') }}"
+      - "Repository: {{ repo_type | default('cdn') }}"
 
 # ========================================
 # PRE-CHECK PHASE - WILL FAIL HERE

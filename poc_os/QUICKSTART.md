@@ -402,3 +402,68 @@ ansible-playbook -i inventory site.yml --tags success_v9.7
 | `target_version` | `9.4` | Target OS version |
 | `disk_threshold` | `90` | Fail if disk usage > 90% |
 
+
+---
+
+## Repository Selection (UPDATED!)
+
+### 3 Repository Options (All Pre-Configured)
+
+| Option | Variable | Description | Use When |
+|--------|----------|-------------|----------|
+| **cdn** | `cdn` | Red Hat CDN (default) | Most environments, internet access |
+| **satellite** | `satellite` | Red Hat Satellite | Managed environments, air-gapped with Satellite |
+| **jump** | `jump` | Local Jump Server | Air-gapped networks, local repos |
+
+**Important:** All repositories must be pre-configured on target systems. The playbook only verifies accessibility.
+
+### Repository Examples
+
+```bash
+# Default - Red Hat CDN
+ansible-playbook -i inventory site.yml --tags success
+
+# Satellite (already configured)
+ansible-playbook -i inventory site.yml --tags success_v9.5 \
+  -e "repo_type=satellite"
+
+# Jump Server (already configured)
+ansible-playbook -i inventory site.yml --tags success_v9.6 \
+  -e "repo_type=jump"
+
+# Version + Repository selection
+ansible-playbook -i inventory site.yml --tags success_v9.7 \
+  -e "repo_type=satellite"
+```
+
+### Quick Examples
+
+```bash
+# Upgrade to 9.4 using CDN
+ansible-playbook -i inventory site.yml --tags success
+
+# Upgrade to 9.5 using Satellite
+ansible-playbook -i inventory site.yml --tags success_v9.5 \
+  -e "repo_type=satellite"
+
+# Upgrade to 9.6 using Jump Server
+ansible-playbook -i inventory site.yml --tags success_v9.6 \
+  -e "repo_type=jump"
+
+# Upgrade to 9.7 using CDN (default)
+ansible-playbook -i inventory site.yml --tags success_v9.7
+```
+
+---
+
+## Updated Variable Reference
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `repo_type` | `cdn` | Repository type (cdn/satellite/jump) |
+| `target_version` | `9.4` | Target RHEL version |
+| `disk_threshold` | `90 | Fail if disk usage > 90% |
+| `reboot_timeout` | `600` | Max seconds to wait for reboot |
+
+**Note:** `jump_server_url` variable removed - repos are pre-configured on targets
+
