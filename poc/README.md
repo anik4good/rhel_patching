@@ -140,13 +140,28 @@ sudo dnf config-manager --set-enabled rhel-9.4-*
 sudo dnf clean all
 
 # Install nginx from 9.4 (will be 1.20.1)
+sudo dnf remove nginx -y
 sudo dnf install nginx -y
 sudo systemctl start nginx
 sudo systemctl enable nginx
 
 # Verify old version
+
 rpm -q nginx
 # Expected: nginx-1.20.1-xxxx.el9_4.x86_64
+
+#httpd
+# On target host, ensure 9.4 repos are enabled
+sudo dnf config-manager --set-enabled rhel-9.4-*
+sudo dnf clean all
+sudo dnf remove httpd -y
+sudo dnf install httpd -y
+sudo systemctl start httpd
+sudo systemctl enable httpd
+
+# Verify old version
+rpm -q httpd
+
 ```
 
 ### Step 2: Verify New Version Available (Optional)

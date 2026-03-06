@@ -1,0 +1,422 @@
+---
+# TC-OS-001: Successful OS Upgrade
+# This scenario demonstrates complete OS version upgrade with reboot management
+# Supports 3 repository options: cdn, satellite, jump (all pre-configured)
+
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "RHEL OS PATCHING POC - SUCCESS SCENARIO (TC-OS-001)"
+
+- name: Display target server information
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  OS UPGRADE: {{ inventory_hostname }}"
+      - "=========================================="
+      - "OS: {{ ansible_distribution }} {{ ansible_distribution_version }}"
+      - "Kernel: {{ ansible_kernel }}"
+      - "IP: {{ ansible_default_ipv4.address | default(ansible_hostname) }}"
+      - "Target: Upgrade to RHEL {{ target_version }}"
+      - "Repository: {{ repo_type | default('cdn') | upper }}"
+
+# ========================================
+# PRE-CHECK PHASE
+# ========================================
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 1: PRE-CHECK VALIDATION"
+
+- name: Get current RHEL version BEFORE upgrade
+  ansible.builtin.shell: cat /etc/redhat-release
+  register: version_before
+  changed_when: false
+
+- name: Display current version
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  CURRENT VERSION (BEFORE UPGRADE)"
+      - "=========================================="
+      - "{{ version_before.stdout }}"
+      - "=========================================="
+
+- name: Check sufficient disk space
+  ansible.builtin.shell: df / | tail -1 | awk '{print $5}' | sed 's/%//'
+  register: disk_usage
+  changed_when: false
+  failed_when: disk_usage.stdout|int > disk_threshold
+
+- name: Display disk usage status
+  ansible.builtin.debug:
+    msg: "✓ Disk space check passed: {{ disk_usage.stdout }}% used"
+
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 1.5: REPOSITORY CHECK ({{ repo_type | default('cdn') | upper }})"
+
+- name: Verify repository accessible - CDN
+  block:
+    - name: Display CDN repository check
+      ansible.builtin.debug:
+        msg: "Using Red Hat CDN repositories"
+
+    - name: Verify subscription status
+      ansible.builtin.command: subscription-manager status
+      register: sub_status
+      changed_when: false
+
+    - name: Display subscription status
+      ansible.builtin.debug:
+        msg: "Subscription Status: {{ sub_status.stdout }}"
+
+    - name: Verify repository accessible
+      ansible.builtin.command: dnf repolist
+      register: repo_check
+      failed_when: repo_check.rc != 0
+      changed_when: false
+
+    - name: Display repository status
+      ansible.builtin.debug:
+        msg: "✓ CDN repositories accessible"
+
+  when: repo_type == "cdn" or repo_type is not defined
+
+- name: Verify repository accessible - Satellite
+  block:
+    - name: Display Satellite repository check
+      ansible.builtin.debug:
+        msg: "Using Satellite repositories (already configured)"
+
+    - name: Verify subscription to Satellite
+      ansible.builtin.command: subscription-manager status
+      register: satellite_status
+      changed_when: false
+
+    - name: Display subscription status
+      ansible.builtin.debug:
+        msg: "Satellite Status: {{ satellite_status.stdout }}"
+
+    - name: Verify repository accessible
+      ansible.builtin.command: dnf repolist
+      register: repo_check
+      failed_when: repo_check.rc != 0
+      changed_when: false
+
+    - name: Display repository status
+      ansible.builtin.debug:
+        msg: "✓ Satellite repositories accessible"
+
+  when: repo_type == "satellite"
+
+- name: Verify repository accessible - Jump Server
+  block:
+    - name: Display Jump Server repository check
+      ansible.builtin.debug:
+        msg: "Using Jump Server repositories (already configured)"
+
+    - name: Verify repository accessible
+      ansible.builtin.command: dnf repolist
+      register: repo_check
+      failed_when: repo_check.rc != 0
+      changed_when: false
+
+    - name: Display repository status
+      ansible.builtin.debug:
+        msg: "✓ Jump Server repositories accessible"
+
+  when: repo_type == "jump"
+
+- name: Check for available updates
+  ansible.builtin.dnf:
+    list: updates
+  register: available_updates
+  changed_when: false
+
+- name: Count available updates
+  ansible.builtin.set_fact:
+    update_count: "{{ available_updates.results | default([]) | length }}"
+
+- name: Display available updates count
+  ansible.builtin.debug:
+    msg: "{{ update_count }} updates available"
+
+- name: Get package versions BEFORE upgrade (for comparison)
+  ansible.builtin.shell: |
+    rpm -q kernel --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q glibc --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q openssl --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q openssl-libs --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q systemd --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q bash --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q python3 --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q krb5-libs --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q coreutils --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q NetworkManager --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+  register: package_versions_before
+  changed_when: false
+
+- name: Set package version facts (before upgrade)
+  ansible.builtin.set_fact:
+    kernel_before: "{{ package_versions_before.stdout_lines[0] | default('unknown') }}"
+    glibc_before: "{{ package_versions_before.stdout_lines[1] | default('unknown') }}"
+    openssl_before: "{{ package_versions_before.stdout_lines[2] | default('unknown') }}"
+    openssl_libs_before: "{{ package_versions_before.stdout_lines[3] | default('unknown') }}"
+    systemd_before: "{{ package_versions_before.stdout_lines[4] | default('unknown') }}"
+    bash_before: "{{ package_versions_before.stdout_lines[5] | default('unknown') }}"
+    python3_before: "{{ package_versions_before.stdout_lines[6] | default('unknown') }}"
+    krb5_libs_before: "{{ package_versions_before.stdout_lines[7] | default('unknown') }}"
+    coreutils_before: "{{ package_versions_before.stdout_lines[8] | default('unknown') }}"
+    networkmanager_before: "{{ package_versions_before.stdout_lines[9] | default('unknown') }}"
+
+# ========================================
+# UPGRADE PHASE
+# ========================================
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 2: OS UPGRADE → {{ target_version }}"
+
+- name: Display upgrade information
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  UPGRADE DETAILS"
+      - "=========================================="
+      - "Current Version: {{ version_before.stdout }}"
+      - "Target Version: {{ target_version }}"
+      - "Repository: {{ repo_type | default('cdn') }}"
+      - "Method: dnf upgrade --releasever={{ target_version }}"
+      - "=========================================="
+
+- name: Clean dnf cache
+  ansible.builtin.command: dnf clean all
+  changed_when: true
+
+- name: Upgrade to RHEL {{ target_version }}
+  ansible.builtin.command: dnf upgrade --releasever={{ target_version }} -y
+  register: upgrade_result
+  async: 3600
+  poll: 10
+
+- name: Display upgrade result
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  UPGRADE RESULT"
+      - "=========================================="
+      - "Changed: {{ upgrade_result.changed }}"
+      - "RC: {{ upgrade_result.rc | default('N/A') }}"
+      - "=========================================="
+  failed_when: false
+
+# ========================================
+# POST-UPGRADE VALIDATION
+# ========================================
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 3: POST-UPGRADE VALIDATION"
+
+- name: Get new RHEL version AFTER upgrade
+  ansible.builtin.shell: cat /etc/redhat-release
+  register: version_after
+  changed_when: false
+
+- name: Display new version
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  NEW VERSION (AFTER UPGRADE)"
+      - "=========================================="
+      - "{{ version_after.stdout }}"
+      - "=========================================="
+
+- name: Verify kernel version
+  ansible.builtin.shell: uname -r
+  register: kernel_version
+  changed_when: false
+
+- name: Display kernel version
+  ansible.builtin.debug:
+    msg: "Kernel: {{ kernel_version.stdout }}"
+
+- name: Display version comparison
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  UPGRADE SUMMARY"
+      - "=========================================="
+      - "VERSION BEFORE: {{ version_before.stdout }}"
+      - "VERSION AFTER:  {{ version_after.stdout }}"
+      - "KERNEL: {{ kernel_version.stdout }}"
+      - "=========================================="
+
+# ========================================
+# REBOOT CHECK PHASE
+# ========================================
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 4: REBOOT CHECK"
+
+- name: Check if reboot is required
+  ansible.builtin.command: /usr/bin/needs-restarting -r
+  register: reboot_required
+  failed_when: false
+  changed_when: reboot_required.rc != 0
+
+- name: Display reboot status
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  REBOOT STATUS"
+      - "=========================================="
+      - "Reboot Required: {{ 'YES' if reboot_required.rc != 0 else 'NO' }}"
+      - "{% if reboot_required.rc != 0 %}Reason: {{ reboot_required.stdout }}{% endif %}"
+      - "=========================================="
+
+- name: Reboot the server if required
+  ansible.builtin.reboot:
+    msg: "Rebooting after RHEL upgrade to {{ target_version }}"
+    pre_reboot_delay: "{{ pre_reboot_delay }}"
+    reboot_timeout: "{{ reboot_timeout }}"
+  when: reboot_required.rc != 0
+
+- name: Confirm system is back online
+  ansible.builtin.ping:
+  register: ping_result
+  retries: 30
+  delay: 10
+  until: ping_result is succeeded
+
+# ========================================
+# FINAL VALIDATION & REPORTING
+# ========================================
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 5: FINAL VALIDATION"
+
+- name: Get final version (after reboot if occurred)
+  ansible.builtin.shell: cat /etc/redhat-release
+  register: version_final
+  changed_when: false
+
+- name: Display final confirmation
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  UPGRADE COMPLETE"
+      - "=========================================="
+      - "System {{ inventory_hostname }} is back online"
+      - "Final Version: {{ version_final.stdout }}"
+      - "Kernel: {{ kernel_version.stdout }}"
+      - "Repository Used: {{ repo_type | default('cdn') }}"
+      - "=========================================="
+
+- name: Create summary file on target
+  ansible.builtin.copy:
+    content: |
+      RHEL {{ target_version }} Upgrade Summary
+      ====================================
+      Date: {{ ansible_date_time.iso8601 }}
+      Server: {{ inventory_hostname }}
+
+      Version Before: {{ version_before.stdout }}
+      Version After:  {{ version_final.stdout }}
+      Kernel Version:  {{ kernel_version.stdout }}
+
+      Reboot Required: {% if reboot_required.rc != 0 %}YES{% else %}NO{% endif %}
+      {% if reboot_required.rc != 0 %}
+      Reboot Reason: {{ reboot_required.stdout }}
+      {% endif %}
+
+      Repository Type: {{ repo_type | default('cdn') }}
+
+      Available Updates: {{ update_count }}
+      Method: dnf upgrade --releasever={{ target_version }}
+
+      Status: SUCCESS
+    dest: "{{ summary_file }}"
+    mode: '0644'
+
+- name: Log successful upgrade
+  ansible.builtin.lineinfile:
+    path: "{{ log_file }}"
+    line: "{{ ansible_date_time.iso8601 }} - OS upgrade SUCCESS: {{ version_before.stdout }} → {{ version_final.stdout }} via {{ repo_type | default('cdn') }}"
+    create: true
+
+# ========================================
+# HTML REPORT GENERATION
+# ========================================
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 6: HTML REPORT GENERATION"
+
+- name: Get package versions AFTER upgrade (for HTML report)
+  ansible.builtin.shell: |
+    rpm -q kernel --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q glibc --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q openssl --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q openssl-libs --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q systemd --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q bash --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q python3 --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q krb5-libs --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q coreutils --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q NetworkManager --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+  register: package_versions_after
+  changed_when: false
+
+- name: Set package version facts (after upgrade)
+  ansible.builtin.set_fact:
+    kernel_after: "{{ package_versions_after.stdout_lines[0] | default('unknown') }}"
+    glibc_after: "{{ package_versions_after.stdout_lines[1] | default('unknown') }}"
+    openssl_after: "{{ package_versions_after.stdout_lines[2] | default('unknown') }}"
+    openssl_libs_after: "{{ package_versions_after.stdout_lines[3] | default('unknown') }}"
+    systemd_after: "{{ package_versions_after.stdout_lines[4] | default('unknown') }}"
+    bash_after: "{{ package_versions_after.stdout_lines[5] | default('unknown') }}"
+    python3_after: "{{ package_versions_after.stdout_lines[6] | default('unknown') }}"
+    krb5_libs_after: "{{ package_versions_after.stdout_lines[7] | default('unknown') }}"
+    coreutils_after: "{{ package_versions_after.stdout_lines[8] | default('unknown') }}"
+    networkmanager_after: "{{ package_versions_after.stdout_lines[9] | default('unknown') }}"
+
+- name: Generate HTML report
+  ansible.builtin.template:
+    src: templates/report.html.j2
+    dest: "/tmp/rhel_os_patching_report_{{ inventory_hostname }}.html"
+    mode: '0644'
+  vars:
+    scenario_name: "success"
+    patch_status: "success"
+    version_before: "{{ version_before.stdout }}"
+    version_after: "{{ version_final.stdout }}"
+    kernel_before: "{{ kernel_before }}"
+    kernel_after: "{{ kernel_after }}"
+    glibc_before: "{{ glibc_before }}"
+    glibc_after: "{{ glibc_after }}"
+    openssl_before: "{{ openssl_before }}"
+    openssl_after: "{{ openssl_after }}"
+    openssl_libs_before: "{{ openssl_libs_before }}"
+    openssl_libs_after: "{{ openssl_libs_after }}"
+    systemd_before: "{{ systemd_before }}"
+    systemd_after: "{{ systemd_after }}"
+    bash_before: "{{ bash_before }}"
+    bash_after: "{{ bash_after }}"
+    python3_before: "{{ python3_before }}"
+    python3_after: "{{ python3_after }}"
+    krb5_libs_before: "{{ krb5_libs_before }}"
+    krb5_libs_after: "{{ krb5_libs_after }}"
+    coreutils_before: "{{ coreutils_before }}"
+    coreutils_after: "{{ coreutils_after }}"
+    networkmanager_before: "{{ networkmanager_before }}"
+    networkmanager_after: "{{ networkmanager_after }}"
+    reboot_required: "{{ reboot_required.rc != 0 }}"
+
+- name: Fetch HTML report to local machine
+  ansible.builtin.fetch:
+    src: "/tmp/rhel_os_patching_report_{{ inventory_hostname }}.html"
+    dest: "/tmp/rhel_os_patching_report_{{ inventory_hostname }}.html"
+    flat: true
+
+- name: Display report location
+  ansible.builtin.debug:
+    msg:
+      - "✓ HTML report generated on {{ inventory_hostname }}: /tmp/rhel_os_patching_report_{{ inventory_hostname }}.html"
+      - "✓ Report downloaded to local machine: /tmp/rhel_os_patching_report_{{ inventory_hostname }}.html"

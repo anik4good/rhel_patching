@@ -38,7 +38,7 @@
   vars:
     current_version: "9.0"
     target_version: "{{ target_version | default('9.4') }}"
-    repo_type: "{{ repo_type | default('cdn') }}"
+    repo_type: "{{ repo_type_input | default('cdn') }}"
     disk_threshold: 90
     reboot_timeout: 600
     pre_reboot_delay: 10
@@ -65,7 +65,7 @@
   vars:
     current_version: "9.0"
     target_version: "9.4"
-    repo_type: "{{ repo_type | default('cdn') }}"
+    repo_type: "{{ repo_type_input | default('cdn') }}"
     disk_threshold: 90
     reboot_timeout: 600
     pre_reboot_delay: 10
@@ -84,7 +84,7 @@
   vars:
     current_version: "9.0"
     target_version: "9.5"
-    repo_type: "{{ repo_type | default('cdn') }}"
+    repo_type: "{{ repo_type_input | default('cdn') }}"
     disk_threshold: 90
     reboot_timeout: 600
     pre_reboot_delay: 10
@@ -103,7 +103,7 @@
   vars:
     current_version: "9.0"
     target_version: "9.6"
-    repo_type: "{{ repo_type | default('cdn') }}"
+    repo_type: "{{ repo_type_input | default('cdn') }}"
     disk_threshold: 90
     reboot_timeout: 600
     pre_reboot_delay: 10
@@ -122,7 +122,7 @@
   vars:
     current_version: "9.0"
     target_version: "9.7"
-    repo_type: "{{ repo_type | default('cdn') }}"
+    repo_type: "{{ repo_type_input | default('cdn') }}"
     disk_threshold: 90
     reboot_timeout: 600
     pre_reboot_delay: 10
@@ -144,7 +144,7 @@
   vars:
     current_version: "9.0"
     target_version: "9.4"
-    repo_type: "{{ repo_type | default('cdn') }}"
+    repo_type: "{{ repo_type_input | default('cdn') }}"
     disk_threshold: 90
     simulate_disk_full: true
     simulated_disk_usage: 95
@@ -162,7 +162,7 @@
   vars:
     current_version: "9.0"
     target_version: "9.4"
-    repo_type: "{{ repo_type | default('cdn') }}"
+    repo_type: "{{ repo_type_input | default('cdn') }}"
     disk_threshold: 90
     corrupt_repo: true
     log_file: /var/log/rhel_os_upgrade_fail.log
@@ -170,4 +170,20 @@
     - ansible.builtin.include_tasks: scenarios/upgrade_fail.yml
   tags:
     - upgrade_fail
+    - all_scenarios
+
+- name: RHEL OS Patching POC - Post-Patch Validation Failure (TC-OS-004)
+  hosts: all
+  become: true
+  serial: 1
+  vars:
+    current_version: "9.0"
+    target_version: "9.4"
+    repo_type: "{{ repo_type_input | default('cdn') }}"
+    disk_threshold: 90
+    log_file: /var/log/rhel_os_upgrade_postcheck_fail.log
+  tasks:
+    - ansible.builtin.include_tasks: scenarios/postcheck_fail.yml
+  tags:
+    - postcheck_fail
     - all_scenarios

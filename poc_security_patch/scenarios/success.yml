@@ -130,7 +130,7 @@
 
 - name: Count security advisories available
   ansible.builtin.set_fact:
-    security_count_before: "{{ security_list_before.stdout_lines | select('search', 'RHSA') | list | length }}"
+    security_count_before: "{{ security_list_before.stdout_lines | select('search', 'RHSA') | list | length | int }}"
 
 - name: Display security exposure before patching
   ansible.builtin.debug:
@@ -139,7 +139,7 @@
       - "  SECURITY EXPOSURE - BEFORE PATCHING"
       - "=========================================="
       - "Security Advisories Available: {{ security_count_before }}"
-      - "{% if security_count_before > 0 %}Risk Level: HIGH{% else %}Risk Level: LOW{% endif %}"
+      - "{% if security_count_before | int > 0 %}Risk Level: HIGH{% else %}Risk Level: LOW{% endif %}"
       - "=========================================="
 
 - name: Get list of packages that will be updated
@@ -224,7 +224,7 @@
 
 - name: Count remaining security advisories
   ansible.builtin.set_fact:
-    security_count_after: "{{ security_list_after.stdout_lines | select('search', 'RHSA') | list | length }}"
+    security_count_after: "{{ security_list_after.stdout_lines | select('search', 'RHSA') | list | length | int }}"
 
 - name: Display security exposure after patching
   ansible.builtin.debug:
@@ -235,7 +235,7 @@
       - "Security Advisories Before: {{ security_count_before }}"
       - "Security Advisories After: {{ security_count_after }}"
       - "CVEs Patched: {{ security_count_before | int - security_count_after | int }}"
-      - "{% if security_count_after == 0 %}Status: ALL SECURITY ADVISORIES APPLIED{% else %}Status: Some advisories remain{% endif %}"
+      - "{% if security_count_after | int == 0 %}Status: ALL SECURITY ADVISORIES APPLIED{% else %}Status: Some advisories remain{% endif %}"
       - "=========================================="
 
 - name: Get package versions after patching
@@ -392,7 +392,7 @@
 - name: Generate HTML report
   ansible.builtin.template:
     src: templates/report.html.j2
-    dest: "/tmp/rhel_security_patch_report_{{ inventory_hostname }}.html"
+    dest: "/tmp/rhel_security_patch_report_{{ inventory_hostname }}_{{ ansible_date_time.iso8601 }}.html"
     mode: '0644'
   vars:
     scenario_name: "security_patch"
@@ -412,6 +412,14 @@
     security_count_after: "{{ security_count_after }}"
     cves_patched: "{{ security_count_before | int - security_count_after | int }}"
 
+- name: Fetch HTML report to local machine
+  ansible.builtin.fetch:
+    src: "/tmp/rhel_security_patch_report_{{ inventory_hostname }}_{{ ansible_date_time.iso8601 }}.html"
+    dest: "/tmp/rhel_security_patch_report_{{ inventory_hostname }}_{{ ansible_date_time.iso8601 }}.html"
+    flat: yes
+
 - name: Display report location
   ansible.builtin.debug:
-    msg: "✓ HTML report generated: /tmp/rhel_security_patch_report_{{ inventory_hostname }}.html"
+    msg:
+      - "✓ HTML report generated on {{ inventory_hostname }}: /tmp/rhel_security_patch_report_{{ inventory_hostname }}_{{ ansible_date_time.iso8601 }}.html"
+      - "✓ Report downloaded to local machine: /tmp/rhel_security_patch_report_{{ inventory_hostname }}_{{ ansible_date_time.iso8601 }}.html"

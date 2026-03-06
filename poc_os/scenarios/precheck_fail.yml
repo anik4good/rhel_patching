@@ -44,7 +44,8 @@
 
 - name: Simulate disk space failure if enabled
   ansible.builtin.set_fact:
-    disk_usage: "{{ simulated_disk_usage }}"
+    disk_usage:
+      stdout: "{{ simulated_disk_usage }}"
   when: simulate_disk_full | default(false)
 
 - name: Validate disk space threshold

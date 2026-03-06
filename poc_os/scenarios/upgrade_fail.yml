@@ -74,33 +74,65 @@
   ansible.builtin.debug:
     msg: "PHASE 2: OS UPGRADE (will fail)"
 
+
 - name: Clean dnf cache
   ansible.builtin.command: dnf clean all
   changed_when: true
 
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "⚠ SIMULATING UPGRADE FAILURE FOR DEMO"
+
 - name: Attempt upgrade to RHEL {{ target_version }}
   block:
-    - name: Upgrade (with potential failure)
-      ansible.builtin.command: dnf upgrade --releasever={{ target_version }} -y
-      register: upgrade_result
-      async: 3600
-      poll: 10
-
-    - name: Display upgrade success
+    - name: Display upgrade start
       ansible.builtin.debug:
         msg:
-          - "✓ Upgrade completed"
-          - "Changed: {{ upgrade_result.changed }}"
+          - "=========================================="
+          - "  STARTING UPGRADE"
+          - "=========================================="
+          - "Target: RHEL {{ target_version }}"
+          - "Command: dnf upgrade --releasever={{ target_version }}"
+          - "Status: In progress..."
+          - "=========================================="
+
+    - name: Simulate upgrade progress
+      ansible.builtin.pause:
+        seconds: 3
+
+    - name: Display progress message
+      ansible.builtin.debug:
+        msg: "✓ Downloading package metadata..."
+
+    - name: Simulate package download
+      ansible.builtin.pause:
+        seconds: 2
+
+    - name: Display progress message
+      ansible.builtin.debug:
+        msg: "✓ Resolving dependencies..."
+
+    - name: Simulate dependency resolution
+      ansible.builtin.pause:
+        seconds: 2
+
+    - name: Display progress message
+      ansible.builtin.debug:
+        msg: "⚠ Starting package installation..."
+
+    - name: Force upgrade failure (simulated)
+      ansible.builtin.fail:
+        msg: "Error: Package dependency conflict detected - glibc-2.34 requires glibc-common-2.34 but glibc-common-2.35 is available"
 
   rescue:
     - name: ===========================================
       ansible.builtin.debug:
-        msg: "⚠ UPGRADE FAILED DETECTED"
+        msg: "⚠ UPGRADE FAILURE DETECTED"
 
     - name: Mark as upgrade failure
       ansible.builtin.set_fact:
         patch_status: "upgrade_failed"
-        failure_reason: "DNF upgrade command failed"
+        failure_reason: "Package dependency conflict during upgrade"
         original_version: "{{ version_before.stdout }}"
 
     - name: Display upgrade failure
@@ -109,13 +141,22 @@
           - "=========================================="
           - "  UPGRADE FAILED"
           - "=========================================="
-          - "Phase: DNF Upgrade"
-          - "Error: {{ upgrade_result.msg | default('DNF command failed') }}"
-          - "RC: {{ upgrade_result.rc | default('unknown') }}"
+          - "Phase: Package Installation"
+          - "Progress: 40% complete"
+          - "Error: {{ ansible_failed_result.msg | default('DNF command failed') }}"
+          - ""
+          - "WHAT HAPPENED:"
+          - "- Upgrade started successfully"
+          - "- Metadata downloaded ✓"
+          - "- Dependencies resolved ✓"
+          - "- Installation began"
+          - "- FAILURE: Dependency conflict detected"
           - ""
           - "ACTION: Rescue block activated"
-          - "System may be in partial state"
-          - "Rollback may be required"
+          - "- Playbook caught the error"
+          - "- System state preserved"
+          - "- No partial changes committed"
+          - "- Safe to recover/retry"
           - "=========================================="
 
     - name: Generate upgrade failure report
@@ -135,8 +176,8 @@
           - Status: FAILED
 
           Error Details:
-          - Error: {{ upgrade_result.msg | default('DNF command failed') }}
-          - RC: {{ upgrade_result.rc | default('unknown') }}
+          - Error: {{ ansible_failed_result.msg | default('DNF command failed') }}
+          - RC: N/A
 
           Root Cause:
           {% if corrupt_repo %}

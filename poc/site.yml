@@ -13,8 +13,8 @@
   become: true
   serial: 1
   vars:
-    package_name: nginx
-    current_version: "1.20.1"  # Old version reference
+    package_name: httpd
+    # current_version: "1.20.1"  # Old version reference
     target_version: "latest"  # RHEL uses backported security fixes
     architecture: "x86_64"
     backup_dir: /var/lib/rpmbackup

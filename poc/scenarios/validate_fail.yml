@@ -10,12 +10,12 @@
 - name: Display target server information
   ansible.builtin.debug:
     msg:
-      - "=========================================="
-      - "  PATCHING: {{ inventory_hostname }}"
-      - "=========================================="
-      - "OS: {{ ansible_distribution }} {{ ansible_distribution_version }}"
-      - "IP: {{ ansible_default_ipv4.address | default(ansible_hostname) }}"
-      - "Testing: Real patching + config corruption → service fails"
+    - "=========================================="
+    - "  PATCHING: {{ inventory_hostname }}"
+    - "=========================================="
+    - "OS: {{ ansible_distribution }} {{ ansible_distribution_version }}"
+    - "IP: {{ ansible_default_ipv4.address | default(ansible_hostname) }}"
+    - "Testing: Real patching + config corruption → service fails"
 
 # ========================================
 # PRE-CHECK PHASE
@@ -64,7 +64,9 @@
 
 - name: Show current enabled repos
   ansible.builtin.debug:
-    msg: "Current repos:\n{{ current_repos.stdout }}"
+    msg: "Current repos:
+
+      {{ current_repos.stdout }}"
 
 - name: Disable RHEL 9.4 repositories (if custom repos configured)
   ansible.builtin.command: dnf config-manager --set-disabled rhel-9.4-*
@@ -133,13 +135,13 @@
 - name: Display current version
   ansible.builtin.debug:
     msg:
-      - "=========================================="
-      - "  CURRENT STATE (BEFORE PATCH)"
-      - "=========================================="
-      - "Package: {{ package_name }}"
-      - "Version: {{ current_version_check.stdout }}"
-      - "Status: {% if 'NOT_INSTALLED' in current_version_check.stdout %}Not installed{% else %}Installed{% endif %}"
-      - "=========================================="
+    - "=========================================="
+    - "  CURRENT STATE (BEFORE PATCH)"
+    - "=========================================="
+    - "Package: {{ package_name }}"
+    - "Version: {{ current_version_check.stdout }}"
+    - "Status: {% if 'NOT_INSTALLED' in current_version_check.stdout %}Not installed{% else %}Installed{% endif %}"
+    - "=========================================="
 
 # ========================================
 # PATCHING PHASE (Actually Patches - Succeeds)
@@ -151,55 +153,55 @@
 - name: Display patching information
   ansible.builtin.debug:
     msg:
-      - "=========================================="
-      - "  PATCHING DETAILS"
-      - "=========================================="
-      - "Before: {{ current_version_check.stdout }}"
-      - "Target: Latest available {{ package_name }}"
-      - "Action: UPGRADE"
-      - "=========================================="
+    - "=========================================="
+    - "  PATCHING DETAILS"
+    - "=========================================="
+    - "Before: {{ current_version_check.stdout }}"
+    - "Target: Latest available {{ package_name }}"
+    - "Action: UPGRADE"
+    - "=========================================="
 
 - name: Patch package to latest available version
   block:
-    - name: Upgrade package to latest available
-      ansible.builtin.dnf:
-        name: "{{ package_name }}"
-        state: latest  # Gets latest available from enabled repos
-        disable_gpg_check: true
-      register: patch_result
+  - name: Upgrade package to latest available
+    ansible.builtin.dnf:
+      name: "{{ package_name }}"
+      state: latest # Gets latest available from enabled repos
+      disable_gpg_check: true
+    register: patch_result
 
-    - name: Display patching result
-      ansible.builtin.debug:
-        msg:
-          - "✓ Patching completed"
-          - "Changed: {{ patch_result.changed }}"
-          - "Changes: {{ patch_result.changes | default([]) | length }} updates"
+  - name: Display patching result
+    ansible.builtin.debug:
+      msg:
+      - "✓ Patching completed"
+      - "Changed: {{ patch_result.changed }}"
+      - "Changes: {{ patch_result.changes | default([]) | length }} updates"
 
   rescue:
-    - name: Patching failure handler
-      ansible.builtin.debug:
-        msg:
-          - "=========================================="
-          - "  PATCHING FAILED"
-          - "=========================================="
-          - "Error: {{ patch_result.msg | default('Unknown error') }}"
-          - "Action: Rescue block activated"
-          - "Backup preserved: Yes"
-          - "=========================================="
+  - name: Patching failure handler
+    ansible.builtin.debug:
+      msg:
+      - "=========================================="
+      - "  PATCHING FAILED"
+      - "=========================================="
+      - "Error: {{ patch_result.msg | default('Unknown error') }}"
+      - "Action: Rescue block activated"
+      - "Backup preserved: Yes"
+      - "=========================================="
 
-    - name: Mark host as failed
-      ansible.builtin.set_fact:
-        patch_status: "patching_failed"
+  - name: Mark host as failed
+    ansible.builtin.set_fact:
+      patch_status: "patching_failed"
 
-    - name: Stop execution
-      meta: end_play
+  - name: Stop execution
+    meta: end_play
 
   always:
-    - name: Log patching attempt
-      ansible.builtin.lineinfile:
-        path: "{{ log_file }}"
-        line: "{{ ansible_date_time.iso8601 }} - Patch attempt: {{ package_name }} {{ current_version_check.stdout }} → latest"
-        create: true
+  - name: Log patching attempt
+    ansible.builtin.lineinfile:
+      path: "{{ log_file }}"
+      line: "{{ ansible_date_time.iso8601 }} - Patch attempt: {{ package_name }} {{ current_version_check.stdout }} → latest"
+      create: true
 
 # ========================================
 # VERSION CHECK (AFTER PATCH)
@@ -216,25 +218,25 @@
 - name: Display new version
   ansible.builtin.debug:
     msg:
-      - "=========================================="
-      - "  NEW STATE (AFTER PATCH)"
-      - "=========================================="
-      - "Package: {{ package_name }}"
-      - "Version: {{ new_version_check.stdout }}"
-      - "Status: Installed"
-      - "=========================================="
+    - "=========================================="
+    - "  NEW STATE (AFTER PATCH)"
+    - "=========================================="
+    - "Package: {{ package_name }}"
+    - "Version: {{ new_version_check.stdout }}"
+    - "Status: Installed"
+    - "=========================================="
 
 - name: Display version comparison
   ansible.builtin.debug:
     msg:
-      - "=========================================="
-      - "  PATCH SUMMARY"
-      - "=========================================="
-      - "Before: {{ current_version_check.stdout }}"
-      - "After:  {{ new_version_check.stdout }}"
-      - "Change:  {% if current_version_check.stdout != new_version_check.stdout %}VERSION CHANGED✓{% else %}No change{% endif %}"
-      - "Status:  PATCHED SUCCESSFULLY"
-      - "=========================================="
+    - "=========================================="
+    - "  PATCH SUMMARY"
+    - "=========================================="
+    - "Before: {{ current_version_check.stdout }}"
+    - "After:  {{ new_version_check.stdout }}"
+    - "Change:  {% if current_version_check.stdout != new_version_check.stdout %}VERSION CHANGED✓{% else %}No change{% endif %}"
+    - "Status:  PATCHED SUCCESSFULLY"
+    - "=========================================="
 
 - name: Set installation facts
   ansible.builtin.set_fact:
@@ -267,9 +269,9 @@
 - name: Display corruption action
   ansible.builtin.debug:
     msg:
-      - "⚠ Configuration file corrupted"
-      - "Added invalid directive to {{ package_name }}.conf"
-      - "This will prevent service from starting"
+    - "⚠ Configuration file corrupted"
+    - "Added invalid directive to {{ package_name }}.conf"
+    - "This will prevent service from starting"
 
 # ========================================
 # POST-VALIDATION PHASE - WILL FAIL HERE
@@ -284,149 +286,145 @@
 
 - name: Attempt to start the service (will fail due to corrupted config)
   block:
-    - name: Stop service first (to ensure clean state)
-      ansible.builtin.systemd:
-        name: "{{ package_name }}"
-        state: stopped
-      failed_when: false
+  - name: Stop service first (to ensure clean state)
+    ansible.builtin.systemd:
+      name: "{{ package_name }}"
+      state: stopped
+    failed_when: false
 
-    - name: Try to start the service
-      ansible.builtin.systemd:
-        name: "{{ package_name }}"
-        state: started
-      register: service_start_result
-      failed_when: false
+  - name: Try to start the service
+    ansible.builtin.systemd:
+      name: "{{ package_name }}"
+      state: started
+    register: service_start_result
+    failed_when: false
 
-    - name: Check actual service status
-      ansible.builtin.shell: systemctl is-active {{ package_name }}
-      register: service_status
-      changed_when: false
+  - name: Check actual service status
+    ansible.builtin.shell: systemctl is-active {{ package_name }}
+    register: service_status
+    changed_when: false
 
-    - name: Display service status
-      ansible.builtin.debug:
-        msg: "Service status: {{ service_status.stdout }}"
+  - name: Display service status
+    ansible.builtin.debug:
+      msg: "Service status: {{ service_status.stdout }}"
 
-    - name: Validate service is running
-      ansible.builtin.fail:
-        msg: "Service validation failed: {{ package_name }} is {{ service_status.stdout }}"
-      when: service_status.stdout != "active"
+  - name: Validate service is running
+    ansible.builtin.fail:
+      msg: "Service validation failed: {{ package_name }} is {{ service_status.stdout }}"
+    when: service_status.stdout != "active"
 
-    - name: Service validation passed (should not reach here)
-      ansible.builtin.debug:
-        msg: "✓ Service is running (unexpected in this scenario)"
-      when: service_status.stdout == "active"
+  - name: Service validation passed (should not reach here)
+    ansible.builtin.debug:
+      msg: "✓ Service is running (unexpected in this scenario)"
+    when: service_status.stdout == "active"
 
   rescue:
-    - name: ===========================================
-      ansible.builtin.debug:
-        msg: "⚠ VALIDATION FAILURE DETECTED"
+  - name: ===========================================
+    ansible.builtin.debug:
+      msg: "⚠ VALIDATION FAILURE DETECTED"
 
-    - name: Mark as validation failure
-      ansible.builtin.set_fact:
-        patch_status: "validation_failed"
-        service_name: "{{ package_name }}"
-        expected_state: "active"
-        actual_state: "{{ service_status.stdout }}"
+  - name: Mark as validation failure
+    ansible.builtin.set_fact:
+      patch_status: "validation_failed"
+      service_name: "{{ package_name }}"
+      expected_state: "active"
+      actual_state: "{{ service_status.stdout }}"
 
-    - name: Display validation failure
-      ansible.builtin.debug:
-        msg:
-          - "=========================================="
-          - "  POST-PATCH VALIDATION FAILED"
-          - "=========================================="
-          - "Package: {{ package_name }}-{{ installed_version }}"
-          - "Installation: SUCCESS ✓"
-          - ""
-          - "Service: {{ service_name }}"
-          - "Expected State: active"
-          - "Actual State: {{ actual_state }}"
-          - ""
-          - "ROOT CAUSE: Config file corrupted during patch"
-          - "This demonstrates post-patch validation catching issues"
-          - ""
-          - "ACTION: Marked as validation failure"
-          - "Backup preserved for rollback"
-          - "=========================================="
+  - name: Display validation failure
+    ansible.builtin.debug:
+      msg:
+      - "=========================================="
+      - "  POST-PATCH VALIDATION FAILED"
+      - "=========================================="
+      - "Package: {{ package_name }}-{{ installed_version }}"
+      - "Installation: SUCCESS ✓"
+      - ""
+      - "Service: {{ service_name }}"
+      - "Expected State: active"
+      - "Actual State: {{ actual_state }}"
+      - ""
+      - "ROOT CAUSE: Config file corrupted during patch"
+      - "This demonstrates post-patch validation catching issues"
+      - ""
+      - "ACTION: Marked as validation failure"
+      - "Backup preserved for rollback"
+      - "=========================================="
 
-    - name: Generate validation failure report
-      ansible.builtin.copy:
-        content: |
-          Post-Patch Validation Failure Report
-          =====================================
-          Date: {{ ansible_date_time.iso8601 }}
-          Server: {{ inventory_hostname }}
+  - name: Generate validation failure report
+    ansible.builtin.copy:
+      content: |
+        Post-Patch Validation Failure Report
+        =====================================
+        Date: {{ ansible_date_time.iso8601 }}
+        Server: {{ inventory_hostname }}
 
-          Patch Status: VALIDATION_FAILED
+        Patch Status: VALIDATION_FAILED
 
-          Patch Information:
-          - Package: {{ package_name }}-{{ installed_version }}
-          - Installation: SUCCESS
-          - Previous Version: {{ current_version_check.stdout }}
+        Patch Information:
+        - Package: {{ package_name }}-{{ installed_version }}
+        - Installation: SUCCESS
+        - Previous Version: {{ current_version_check.stdout }}
 
-          Service Validation:
-          - Service: {{ service_name }}
-          - Expected State: {{ expected_state }}
-          - Actual State: {{ actual_state }}
-          - Status: FAILED
+        Service Validation:
+        - Service: {{ service_name }}
+        - Expected State: {{ expected_state }}
+        - Actual State: {{ actual_state }}
+        - Status: FAILED
 
-          Root Cause:
-          Configuration file was intentionally corrupted to demonstrate
-          post-patch validation. In real scenarios, this could be:
-          - Configuration file overwritten by patch
-          - Dependency incompatibility
-          - Permission problem
-          - Port conflict
+        Root Cause:
+        Configuration file was intentionally corrupted to demonstrate
+        post-patch validation. In real scenarios, this could be:
+        - Configuration file overwritten by patch
+        - Dependency incompatibility
+        - Permission problem
+        - Port conflict
 
-          Demonstration:
-          This scenario shows that even when package installation succeeds,
-          the playbook validates that services actually start. This prevents
-          false "success" reports when patching breaks functionality.
+        Demonstration:
+        This scenario shows that even when package installation succeeds,
+        the playbook validates that services actually start. This prevents
+        false "success" reports when patching breaks functionality.
 
-          Rollback Options:
-          1. Restore config: cp {{ backup_dir }}/{{ package_name }}.conf.backup /etc/{{ package_name }}/{{ package_name }}.conf
-          2. Rollback package: rpm -Uvh --force {{ backup_dir }}/{{ package_name }}-*.rpm
-          3. Revert VM snapshot
-          4. Fix config manually: {{ package_name }} -t
+        Rollback Options:
+        1. Restore config: cp {{ backup_dir }}/{{ package_name }}.conf.backup /etc/{{ package_name }}/{{ package_name }}.conf
+        2. Rollback package: rpm -Uvh --force {{ backup_dir }}/{{ package_name }}-*.rpm
+        3. Revert VM snapshot
+        4. Fix config manually: {{ package_name }} -t
 
-          Backup Available: Yes
-          Backup Location: {{ backup_dir }}/
-          Config Backup: {{ backup_dir }}/{{ package_name }}.conf.backup
+        Backup Available: Yes
+        Backup Location: {{ backup_dir }}/
+        Config Backup: {{ backup_dir }}/{{ package_name }}.conf.backup
 
-        dest: "/tmp/rhel_patching_validate_fail_{{ inventory_hostname }}.txt"
+      dest: "/tmp/rhel_patching_validate_fail_{{ inventory_hostname }}.txt"
 
-    - name: Display recovery instructions
-      ansible.builtin.debug:
-        msg:
-          - "=========================================="
-          - "  ROLLBACK INSTRUCTIONS"
-          - "=========================================="
-          - "Option 1: Restore config backup (recommended)"
-          - "  cp {{ backup_dir }}/{{ package_name }}.conf.backup /etc/{{ package_name }}/{{ package_name }}.conf"
-          - "  systemctl start {{ package_name }}"
-          - ""
-          - "Option 2: Rollback package completely"
-          - "  rpm -Uvh --force {{ backup_dir }}/{{ package_name }}-*.rpm"
-          - "  cp {{ backup_dir }}/{{ package_name }}.conf.backup /etc/{{ package_name }}/{{ package_name }}.conf"
-          - "  systemctl start {{ package_name }}"
-          - ""
-          - "Option 3: Revert VM snapshot"
-          - "  virsh snapshot-revert <domain> <snapshot>"
-          - ""
-          - "Option 4: Manual recovery"
-          - "  Investigate service logs: journalctl -u {{ package_name }} -n 50"
-          - "  Test config: {{ package_name }} -t"
-          - "  Fix errors in /etc/{{ package_name }}/{{ package_name }}.conf"
-          - "=========================================="
+  - name: Display recovery instructions
+    ansible.builtin.debug:
+      msg:
+      - "=========================================="
+      - "  ROLLBACK INSTRUCTIONS"
 
-    - name: Log validation failure
-      ansible.builtin.lineinfile:
-        path: "{{ log_file }}"
-        line: "{{ ansible_date_time.iso8601 }} - Validation failed: Service {{ service_name }} is {{ actual_state }} after patching to {{ installed_version }}"
-        create: true
+      - "Option 1: Rollback package completely"
+      - "  rpm -Uvh --force {{ backup_dir }}/{{ package_name }}-*.rpm"
+      - "  cp {{ backup_dir }}/{{ package_name }}.conf.backup /etc/{{ package_name }}/{{ package_name }}.conf"
+      - "  systemctl start {{ package_name }}"
+      - ""
+      - "Option 2: Revert VM snapshot"
+      - "  virsh snapshot-revert <domain> <snapshot>"
+      - ""
+      - "Option 3: Manual recovery"
+      - "  Investigate service logs: journalctl -u {{ package_name }} -n 50"
+      - "  Test config: {{ package_name }} -t"
+      - "  Fix errors in /etc/{{ package_name }}/{{ package_name }}.conf"
+      - "=========================================="
 
-    - name: Stop execution
-      ansible.builtin.fail:
-        msg: "Stopping execution: Post-patch validation failed - service not running despite successful package installation"
+  - name: Log validation failure
+    ansible.builtin.lineinfile:
+      path: "{{ log_file }}"
+      line: "{{ ansible_date_time.iso8601 }} - Validation failed: Service {{ service_name }} is {{ actual_state }} after patching to {{ installed_version }}"
+      create: true
+
+  - name: Stop execution
+    ansible.builtin.fail:
+      msg: "Stopping execution: Post-patch validation failed - service not running despite successful package installation"
 
 # ========================================
 # CODE BELOW SHOULD NOT EXECUTE

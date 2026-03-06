@@ -1,0 +1,241 @@
+---
+# TC-OS-004: Post-Patch Validation Failure
+# This scenario checks ALL enabled services and reports which are stopped
+
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "RHEL OS PATCHING POC - POST-CHECK VALIDATION (TC-OS-004)"
+
+- name: Display target server information
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  OS UPGRADE: {{ inventory_hostname }}"
+      - "=========================================="
+      - "OS: {{ ansible_distribution }} {{ ansible_distribution_version }}"
+      - "Testing: Post-upgrade service validation failure"
+
+# ========================================
+# PRE-CHECK PHASE
+# ========================================
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 1: PRE-CHECK VALIDATION"
+
+- name: Get current RHEL version
+  ansible.builtin.shell: cat /etc/redhat-release
+  register: version_before
+  changed_when: false
+
+- name: Display current version
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  CURRENT VERSION"
+      - "=========================================="
+      - "{{ version_before.stdout }}"
+      - "=========================================="
+
+- name: Check sufficient disk space
+  ansible.builtin.shell: df / | tail -1 | awk '{print $5}' | sed 's%'
+  register: disk_usage
+  changed_when: false
+  failed_when: disk_usage.stdout|int > disk_threshold
+
+- name: Display disk usage status
+  ansible.builtin.debug:
+    msg: "Disk space check passed: {{ disk_usage.stdout }}% used"
+
+- name: Verify repository accessible
+  ansible.builtin.command: dnf repolist
+  register: repo_check
+  changed_when: false
+  failed_when: repo_check.rc != 0
+
+- name: Display repository status
+  ansible.builtin.debug:
+    msg: "Repository accessible"
+
+# ========================================
+# UPGRADE PHASE
+# ========================================
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 2: OS UPGRADE"
+
+- name: Display upgrade information
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  UPGRADE DETAILS"
+      - "=========================================="
+      - "Current Version: {{ version_before.stdout }}"
+      - "Target Version: {{ target_version }}"
+      - "=========================================="
+
+- name: Clean dnf cache
+  ansible.builtin.command: dnf clean all
+  changed_when: true
+
+- name: Simulate successful upgrade
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  UPGRADE COMPLETED"
+      - "=========================================="
+
+- name: Get new RHEL version AFTER upgrade
+  ansible.builtin.shell: cat /etc/redhat-release
+  register: version_after
+  changed_when: false
+
+- name: Display new version
+  ansible.builtin.debug:
+    msg: "{{ version_after.stdout }}"
+
+# ========================================
+# POST-UPGRADE SERVICE VALIDATION
+# ========================================
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 3: POST-UPGRADE SERVICE VALIDATION"
+
+- name: Get ALL enabled services
+  ansible.builtin.shell: systemctl list-unit-files --type=service --state=enabled --no-legend | awk '{print $1}'
+  register: enabled_services_list
+  changed_when: false
+
+- name: Display count of enabled services
+  ansible.builtin.debug:
+    msg: "Found {{ enabled_services_list.stdout_lines | length }} enabled services"
+
+- name: Check status of all enabled services using systemctl status
+  ansible.builtin.shell: |
+    echo "Checking all enabled services..."
+    for service in $(systemctl list-unit-files --type=service --state=enabled --no-legend | awk '{print $1}'); do
+      status=$(systemctl status "$service" 2>/dev/null | grep "Active:" | awk '{print $2}')
+      if [ "$status" = "active" ]; then
+        echo "[OK] $service: RUNNING"
+      else
+        echo "[FAIL] $service: STOPPED ($status)"
+      fi
+    done
+  register: all_services_status
+  changed_when: false
+
+- name: Display all services status
+  ansible.builtin.debug:
+    msg: "{{ all_services_status.stdout_lines }}"
+
+- name: Get list of stopped services
+  ansible.builtin.set_fact:
+    stopped_services: "{{ all_services_status.stdout_lines | select('search', '\\[FAIL\\]') | map('regex_replace', '^\\[FAIL\\] ([^:]+):.*$', '\\1') | list }}"
+    running_services_count: "{{ all_services_status.stdout_lines | select('search', '\\[OK\\]') | list | length }}"
+    total_services: "{{ enabled_services_list.stdout_lines | length }}"
+
+- name: Display service validation summary
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  SERVICE VALIDATION SUMMARY"
+      - "=========================================="
+      - "Total Enabled Services: {{ total_services }}"
+      - "Running: {{ running_services_count }}"
+      - "Stopped: {{ stopped_services | length }}"
+      - ""
+      - "{% if stopped_services | length > 0 %}STOPPED SERVICES:{% else %}ALL SERVICES RUNNING{% endif %}"
+      - "{{ stopped_services | join('\n') if (stopped_services | length > 0) else 'None' }}"
+      - "=========================================="
+
+- name: Fail if any services are stopped
+  ansible.builtin.fail:
+    msg: "{{ stopped_services | length }} service(s) stopped: {{ stopped_services | join(', ') }}"
+  when: stopped_services | length > 0
+  register: validation_result
+  ignore_errors: yes
+
+- name: Mark as post-check failure
+  ansible.builtin.set_fact:
+    patch_status: "postcheck_failed"
+    failure_reason: "Services not running after upgrade"
+    original_version: "{{ version_before.stdout }}"
+    upgraded_version: "{{ version_after.stdout }}"
+    stopped_services_list: "{{ stopped_services | join(', ') }}"
+  when: stopped_services | length > 0
+
+- name: Display validation result
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  POST-UPGRADE VALIDATION {{ 'FAILED' if (stopped_services | length > 0) else 'PASSED' }}"
+      - "=========================================="
+      - "WHAT HAPPENED:"
+      - "- OS upgrade completed successfully"
+      - "- System rebooted successfully"
+      - "- Version: {{ version_before.stdout }} -> {{ version_after.stdout }}"
+      - ""
+      - "SERVICE VALIDATION:"
+      - "Total Enabled Services: {{ total_services }}"
+      - "Running: {{ running_services_count }}"
+      - "Stopped: {{ stopped_services | length }}"
+      - ""
+      - "{% if stopped_services | length > 0 %}STOPPED SERVICES DETECTED:{% else %}ALL SERVICES RUNNING{% endif %}"
+      - "{{ stopped_services | join('\n') if (stopped_services | length > 0) else 'None' }}"
+      - ""
+      - "{{ 'ACTION: Playbook detected ' + (stopped_services | length | string) + ' stopped service(s)' if (stopped_services | length > 0) else 'ACTION: All services validated' }}"
+      - "=========================================="
+
+- name: Generate validation report
+  ansible.builtin.copy:
+    content: |
+      Post-Upgrade Validation Report
+      ======================================
+      Date: {{ ansible_date_time.iso8601 }}
+      Server: {{ inventory_hostname }}
+
+      Patch Status: {{ 'POSTCHECK_FAILED' if (stopped_services | length > 0) else 'PASSED' }}
+
+      Upgrade Information:
+      - Original: {{ version_before.stdout }}
+      - Upgraded To: {{ version_after.stdout }}
+      - Upgrade Status: SUCCESS
+      - Reboot: COMPLETED
+
+      Service Validation Summary:
+      - Total Enabled Services: {{ total_services }}
+      - Running: {{ running_services_count }}
+      - Stopped: {{ stopped_services | length }}
+
+      {% if stopped_services | length > 0 %}
+      Stopped Services:
+      {% for service in stopped_services %}
+      - {{ service }}
+      {% endfor %}
+
+      Recovery Required:
+      1. Review stopped services
+      2. Start critical services:
+         {% for service in stopped_services %}
+         systemctl start {{ service }}
+         systemctl enable {{ service }}
+         {% endfor %}
+      3. Verify startup:
+         systemctl status <service>
+      4. Check logs:
+         journalctl -u <service> -n 50
+      {% else %}
+      All Services: PASSED
+      All {{ total_services }} enabled services are running properly.
+      {% endif %}
+    dest: "/tmp/rhel_os_postcheck_{{ inventory_hostname }}.txt"
+
+- name: Log result
+  ansible.builtin.lineinfile:
+    path: "{{ log_file }}"
+    line: "{{ ansible_date_time.iso8601 }} - Post-check {{ 'FAILED' if (stopped_services | length > 0) else 'PASSED' }}: {{ running_services_count }}/{{ total_services }} services running{% if stopped_services | length > 0 %}, stopped: {{ stopped_services_list }}{% endif %}"
+    create: true
+
+- name: Stop execution if validation failed
+  ansible.builtin.fail:
+    msg: "Stopping execution: {{ stopped_services | length }} service(s) not running after upgrade"
+  when: stopped_services | length > 0
