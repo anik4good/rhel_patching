@@ -230,3 +230,43 @@
     path: "{{ log_file }}"
     line: "{{ ansible_date_time.iso8601 }} - OS upgrade SUCCESS: {{ version_before.stdout }} → {{ version_final.stdout }}"
     create: true
+
+# ========================================
+# HTML REPORT GENERATION
+# ========================================
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 6: HTML REPORT GENERATION"
+
+- name: Get package versions for HTML report
+  ansible.builtin.shell: |
+    rpm -q glibc --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q openssl --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q systemd --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+  register: package_versions
+  changed_when: false
+
+- name: Set package version facts
+  ansible.builtin.set_fact:
+    glibc_after: "{{ package_versions.stdout_lines[0] | default('Updated') }}"
+    openssl_after: "{{ package_versions.stdout_lines[1] | default('Updated') }}"
+    systemd_after: "{{ package_versions.stdout_lines[2] | default('Updated') }}"
+
+- name: Generate HTML report
+  ansible.builtin.template:
+    src: templates/report.html.j2
+    dest: "/tmp/rhel_os_patching_report_{{ inventory_hostname }}.html"
+    mode: '0644'
+  vars:
+    scenario_name: "success"
+    patch_status: "success"
+    version_before: "{{ version_before.stdout }}"
+    version_after: "{{ version_final.stdout }}"
+    kernel_before: "{{ ansible_kernel }}"
+    kernel_after: "{{ kernel_version.stdout }}"
+    reboot_required: "{{ reboot_required.rc != 0 }}"
+    target_version: "{{ target_version }}"
+
+- name: Display report location
+  ansible.builtin.debug:
+    msg: "✓ HTML report generated: /tmp/rhel_os_patching_report_{{ inventory_hostname }}.html"
