@@ -1,0 +1,199 @@
+---
+# TC-SEC-003: Security Patching Failure
+# This scenario demonstrates handling patch installation failures
+
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "RHEL SECURITY PATCHING POC - PATCH FAILURE SCENARIO (TC-SEC-003)"
+
+- name: Display target server information
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  SECURITY PATCHING: {{ inventory_hostname }}"
+      - "=========================================="
+      - "OS: {{ ansible_distribution }} {{ ansible_distribution_version }}"
+      - "Testing: Security patch installation failure"
+      - "Repository: {{ repo_type | default('cdn') }}"
+
+# ========================================
+# PRE-CHECK PHASE - WILL PASS
+# ========================================
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 1: PRE-CHECK VALIDATION"
+
+- name: Get current RHEL version
+  ansible.builtin.shell: cat /etc/redhat-release
+  register: version_before
+  changed_when: false
+
+- name: Display current version
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  CURRENT VERSION"
+      - "=========================================="
+      - "{{ version_before.stdout }}"
+      - "=========================================="
+
+- name: Check sufficient disk space
+  ansible.builtin.shell: df / | tail -1 | awk '{print $5}' | sed 's/%//'
+  register: disk_usage
+  changed_when: false
+  failed_when: disk_usage.stdout|int > disk_threshold
+
+- name: Display disk usage status
+  ansible.builtin.debug:
+    msg: "✓ Disk space check passed: {{ disk_usage.stdout }}% used"
+
+- name: Verify repository accessible
+  ansible.builtin.command: dnf repolist
+  register: repo_check
+  failed_when: repo_check.rc != 0
+  changed_when: false
+
+- name: Display repository status
+  ansible.builtin.debug:
+    msg: "✓ Repositories accessible"
+
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 2: SECURITY EXPOSURE ASSESSMENT"
+
+- name: List available security advisories
+  ansible.builtin.command: dnf updateinfo list security
+  register: security_list_before
+  changed_when: false
+  failed_when: false
+
+- name: Count security advisories available
+  ansible.builtin.set_fact:
+    security_count_before: "{{ security_list_before.stdout_lines | select('search', 'RHSA') | list | length }}"
+
+- name: Display security exposure before patching
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  SECURITY EXPOSURE - BEFORE PATCHING"
+      - "=========================================="
+      - "Security Advisories Available: {{ security_count_before }}"
+      - "=========================================="
+
+# ========================================
+# PATCHING PHASE - WILL FAIL HERE
+# ========================================
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 3: APPLYING SECURITY PATCHES"
+
+- name: Simulate repository failure if enabled
+  ansible.builtin.set_fact:
+    simulate_repo_failure: true
+  when: simulate_repo_fail | default(false)
+
+- name: Attempt to apply security updates
+  block:
+    - name: Apply security updates only
+      ansible.builtin.dnf:
+        name: '*'
+        state: latest
+        security: yes
+        update_cache: yes
+      register: security_patch_result
+
+    - name: Display security patch result
+      ansible.builtin.debug:
+        msg:
+          - "=========================================="
+          - "  SECURITY PATCH RESULT"
+          - "=========================================="
+          - "Changed: {{ security_patch_result.changed }}"
+          - "=========================================="
+
+  rescue:
+    - name: ===========================================
+      ansible.builtin.debug:
+        msg: "⚠ SECURITY PATCHING FAILED"
+
+    - name: Mark as patch failure
+      ansible.builtin.set_fact:
+        patch_status: "patch_failed"
+        failure_reason: "Security patch installation failed"
+
+    - name: Display patch failure
+      ansible.builtin.debug:
+        msg:
+          - "=========================================="
+          - "  SECURITY PATCH INSTALLATION FAILED"
+          - "=========================================="
+          - "Error: Unable to apply security patches"
+          - "Possible causes:"
+          - "  - Repository connection issue"
+          - "  - Package dependency conflict"
+          - "  - Network connectivity problem"
+          - ""
+          - "ACTION: Playbook stopped"
+          - "No further actions taken"
+          - "=========================================="
+
+    - name: Generate patch failure report
+      ansible.builtin.copy:
+        content: |
+          Security Patching Failure Report
+          =================================
+          Date: {{ ansible_date_time.iso8601 }}
+          Server: {{ inventory_hostname }}
+
+          Patch Status: PATCH_FAILED
+
+          Failure Details:
+          - Phase: Security Patch Installation
+          - Error: Unable to apply security patches
+          - Security Advisories Before: {{ security_count_before }}
+
+          Root Cause:
+          Repository connection issue or package dependency conflict
+
+          Action Required:
+          1. Check repository connectivity
+          2. Verify package dependencies
+          3. Check network connectivity
+          4. Review dnf logs: /var/log/dnf.log
+          5. Re-run playbook after resolution
+
+          System State:
+          - Pre-checks: PASSED
+          - Security patching: FAILED
+          - No changes made to packages
+        dest: "/tmp/rhel_security_patch_fail_{{ inventory_hostname }}.txt"
+
+    - name: Display recovery instructions
+      ansible.builtin.debug:
+        msg:
+          - "=========================================="
+          - "  RECOVERY INSTRUCTIONS"
+          - "=========================================="
+          - "Issue: Security patch installation failed"
+          - ""
+          - "Steps to fix:"
+          - "1. Check repository connectivity: dnf repolist"
+          - "2. Check package dependencies: dnf list --updates"
+          - "3. Review logs: cat /var/log/dnf.log"
+          - "4. Verify network: ping repository-server"
+          - "5. Re-run playbook"
+          - "=========================================="
+
+    - name: Log patch failure
+      ansible.builtin.lineinfile:
+        path: "{{ log_file }}"
+        line: "{{ ansible_date_time.iso8601 }} - Security patch FAILED: Installation error on {{ inventory_hostname }}"
+        create: true
+
+    - name: Stop execution
+      ansible.builtin.fail:
+        msg: "Stopping execution: Security patch installation failed"
+
+- name: This should not be reached
+  ansible.builtin.debug:
+    msg: "This message should not appear - execution should have stopped"

@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>RHEL Security Patching Report</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; font-size: 14px; }
+        .container { max-width: 1400px; margin: 0 auto; background: white; padding: 20px; border: 1px solid #ddd; }
+        h1 { color: #333; border-bottom: 3px solid #0066cc; padding-bottom: 10px; }
+        h2 { color: #555; margin-top: 30px; border-bottom: 1px solid #ddd; padding-bottom: 5px; }
+        .metadata { background: #f0f0f0; padding: 12px; margin: 10px 0; font-size: 13px; border-left: 4px solid #0066cc; }
+        .security-badge { background: #ffe6e6; border-left: 4px solid #cc0000; padding: 12px; margin: 10px 0; }
+        .summary-table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 13px; }
+        .summary-table th, .summary-table td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+        .summary-table th { background: #0066cc; color: white; font-weight: bold; }
+        .summary-table tr:nth-child(even) { background: #f9f9f9; }
+        .status-success { color: #008000; font-weight: bold; }
+        .status-failed { color: #cc0000; font-weight: bold; }
+        .patch-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
+        .patch-table th { background: #666; color: white; padding: 8px; text-align: left; border: 1px solid #444; }
+        .patch-table td { border: 1px solid #ddd; padding: 8px; }
+        .patch-table tr:nth-child(even) { background: #f5f5f5; }
+        .version-before { color: #cc0000; }
+        .version-after { color: #008000; font-weight: bold; }
+        .arrow { color: #0066cc; font-weight: bold; }
+        .kernel-row { background: #fff4e6; font-weight: bold; }
+        .security-row { background: #ffe6e6; }
+        .cve-count { font-size: 24px; font-weight: bold; color: #cc0000; }
+        .cve-fixed { font-size: 24px; font-weight: bold; color: #008000; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔒 RHEL Security Patching Report - {{ scenario_name | upper | replace('_', ' ') }}</h1>
+
+        <div class="metadata">
+            <strong>Generated:</strong> {{ ansible_date_time.iso8601 }} |
+            <strong>Server:</strong> {{ inventory_hostname }} |
+            <strong>Scenario:</strong> {{ scenario_name | upper | replace('_', ' ') }}
+        </div>
+
+        {% if patch_status == 'success' %}
+        <div class="security-badge">
+            <h2 style="margin-top: 0; border: none; color: #cc0000;">🛡️ Security Exposure Summary</h2>
+            <table class="summary-table">
+                <tr>
+                    <th>Metric</th>
+                    <th>Value</th>
+                </tr>
+                <tr>
+                    <td><strong>Security Advisories Before</strong></td>
+                    <td class="cve-count">{{ security_count_before }}</td>
+                </tr>
+                <tr>
+                    <td><strong>Security Advisories After</strong></td>
+                    <td class="cve-count">{{ security_count_after }}</td>
+                </tr>
+                <tr>
+                    <td><strong>CVEs Patched</strong></td>
+                    <td class="cve-fixed">{{ cves_patched }}</td>
+                </tr>
+                <tr>
+                    <td><strong>Risk Reduction</strong></td>
+                    <td><strong>{% if cves_patched|int > 0 %}HIGH{% else %}NONE{% endif %}</strong></td>
+                </tr>
+            </table>
+        </div>
+        {% endif %}
+
+        <h2>System Summary</h2>
+        <table class="summary-table">
+            <tr>
+                <th>Metric</th>
+                <th>Value</th>
+            </tr>
+            <tr>
+                <td><strong>Status</strong></td>
+                <td>{% if patch_status == 'success' %}<span class="status-success">SUCCESS</span>{% else %}<span class="status-failed">FAILED</span>{% endif %}</td>
+            </tr>
+            <tr>
+                <td><strong>OS Version</strong></td>
+                <td>{{ version_before | default('N/A') }}</td>
+            </tr>
+            <tr>
+                <td><strong>Kernel Before</strong></td>
+                <td class="version-before">{{ kernel_before | default('N/A') }}</td>
+            </tr>
+            <tr>
+                <td><strong>Kernel After</strong></td>
+                <td class="version-after">{{ kernel_after | default('N/A') }}</td>
+            </tr>
+            <tr>
+                <td><strong>Reboot Required</strong></td>
+                <td>{{ 'YES' if reboot_required else 'NO' }}</td>
+            </tr>
+        </table>
+
+        {% if patch_status == 'success' %}
+        <h2>Security Package Updates</h2>
+        <div class="server-section">
+            <table class="patch-table">
+                <tr>
+                    <th style="width: 25%">Package Name</th>
+                    <th style="width: 20%">Version Before</th>
+                    <th style="width: 5%"></th>
+                    <th style="width: 20%">Version After</th>
+                    <th style="width: 10%">Type</th>
+                </tr>
+                <tr class="kernel-row">
+                    <td><strong>kernel</strong></td>
+                    <td class="version-before">{{ kernel_before }}</td>
+                    <td class="arrow">→</td>
+                    <td class="version-after">{{ kernel_after }}</td>
+                    <td>KERNEL</td>
+                </tr>
+                <tr class="security-row">
+                    <td><strong>glibc</strong></td>
+                    <td class="version-before">{{ glibc_before | default('Updated') }}</td>
+                    <td class="arrow">→</td>
+                    <td class="version-after">{{ glibc_after | default('Updated') }}</td>
+                    <td>SECURITY</td>
+                </tr>
+                <tr class="security-row">
+                    <td><strong>openssl</strong></td>
+                    <td class="version-before">{{ openssl_before | default('Updated') }}</td>
+                    <td class="arrow">→</td>
+                    <td class="version-after">{{ openssl_after | default('Updated') }}</td>
+                    <td>SECURITY</td>
+                </tr>
+                <tr>
+                    <td><strong>systemd</strong></td>
+                    <td class="version-before">{{ systemd_before | default('Updated') }}</td>
+                    <td class="arrow">→</td>
+                    <td class="version-after">{{ systemd_after | default('Updated') }}</td>
+                    <td>BUGFIX</td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="security-badge" style="margin-top: 30px;">
+            <h3 style="margin-top: 0;">🔐 Security Posture</h3>
+            <p><strong>Before Patching:</strong> {{ security_count_before }} security advisories pending</p>
+            <p><strong>After Patching:</strong> {{ security_count_after }} security advisories remaining</p>
+            <p><strong>CVEs Addressed:</strong> <strong>{{ cves_patched }}</strong></p>
+            {% if cves_patched|int > 0 %}
+            <p style="color: #008000; font-weight: bold;">✓ System security posture improved</p>
+            {% else %}
+            <p style="color: #cc0000; font-weight: bold;">⚠ No security updates were applied</p>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <div class="metadata" style="margin-top: 30px;">
+            <strong>Generated by:</strong> Ansible RHEL Security Patching POC |
+            <strong>Patch Type:</strong> Security Only |
+            <strong>Repository:</strong> {{ repo_type | default('cdn') | upper }}
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,285 @@
+---
+# TC-SEC-004: Post-Patch Validation Failure
+# This scenario demonstrates handling post-patch service validation failures
+
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "RHEL SECURITY PATCHING POC - POST-PATCH VALIDATION FAILURE (TC-SEC-004)"
+
+- name: Display target server information
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  SECURITY PATCHING: {{ inventory_hostname }}"
+      - "=========================================="
+      - "OS: {{ ansible_distribution }} {{ ansible_distribution_version }}"
+      - "Testing: Post-patch service validation failure"
+      - "Repository: {{ repo_type | default('cdn') }}"
+
+# ========================================
+# PRE-CHECK PHASE
+# ========================================
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 1: PRE-CHECK VALIDATION"
+
+- name: Get current RHEL version
+  ansible.builtin.shell: cat /etc/redhat-release
+  register: version_before
+  changed_when: false
+
+- name: Display current version
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  CURRENT VERSION"
+      - "=========================================="
+      - "{{ version_before.stdout }}"
+      - "=========================================="
+
+- name: Check sufficient disk space
+  ansible.builtin.shell: df / | tail -1 | awk '{print $5}' | sed 's/%//'
+  register: disk_usage
+  changed_when: false
+  failed_when: disk_usage.stdout|int > disk_threshold
+
+- name: Display disk usage status
+  ansible.builtin.debug:
+    msg: "✓ Disk space check passed: {{ disk_usage.stdout }}% used"
+
+- name: Verify repository accessible
+  ansible.builtin.command: dnf repolist
+  register: repo_check
+  failed_when: repo_check.rc != 0
+  changed_when: false
+
+- name: Display repository status
+  ansible.builtin.debug:
+    msg: "✓ Repositories accessible"
+
+- name: List available security advisories
+  ansible.builtin.command: dnf updateinfo list security
+  register: security_list_before
+  changed_when: false
+  failed_when: false
+
+- name: Count security advisories available
+  ansible.builtin.set_fact:
+    security_count_before: "{{ security_list_before.stdout_lines | select('search', 'RHSA') | list | length }}"
+
+- name: Display security exposure before patching
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  SECURITY EXPOSURE - BEFORE PATCHING"
+      - "=========================================="
+      - "Security Advisories Available: {{ security_count_before }}"
+      - "=========================================="
+
+# ========================================
+# PATCHING PHASE - WILL SUCCEED
+# ========================================
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 2: APPLYING SECURITY PATCHES"
+
+- name: Get package versions before patching
+  ansible.builtin.shell: |
+    rpm -q kernel --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q glibc --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q openssl --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q systemd --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+  register: package_versions_before
+  changed_when: false
+
+- name: Set package version facts (before)
+  ansible.builtin.set_fact:
+    kernel_before_patch: "{{ package_versions_before.stdout_lines[0] | default('unknown') }}"
+    glibc_before_patch: "{{ package_versions_before.stdout_lines[1] | default('unknown') }}"
+    openssl_before_patch: "{{ package_versions_before.stdout_lines[2] | default('unknown') }}"
+    systemd_before_patch: "{{ package_versions_before.stdout_lines[3] | default('unknown') }}"
+
+- name: Apply security updates only
+  ansible.builtin.dnf:
+    name: '*'
+    state: latest
+    security: yes
+    update_cache: yes
+  register: security_patch_result
+
+- name: Display security patch result
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  SECURITY PATCH RESULT"
+      - "=========================================="
+      - "Changed: {{ security_patch_result.changed }}"
+      - "Packages Updated: {{ security_patch_result.msg | default('Security updates applied') }}"
+      - "=========================================="
+
+- name: Get package versions after patching
+  ansible.builtin.shell: |
+    rpm -q kernel --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q glibc --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q openssl --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q systemd --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+  register: package_versions_after
+  changed_when: false
+
+- name: Set package version facts (after)
+  ansible.builtin.set_fact:
+    kernel_after_patch: "{{ package_versions_after.stdout_lines[0] | default('unknown') }}"
+    glibc_after_patch: "{{ package_versions_after.stdout_lines[1] | default('unknown') }}"
+    openssl_after_patch: "{{ package_versions_after.stdout_lines[2] | default('unknown') }}"
+    systemd_after_patch: "{{ package_versions_after.stdout_lines[3] | default('unknown') }}"
+
+- name: List remaining security advisories
+  ansible.builtin.command: dnf updateinfo list security
+  register: security_list_after
+  changed_when: false
+  failed_when: false
+
+- name: Count remaining security advisories
+  ansible.builtin.set_fact:
+    security_count_after: "{{ security_list_after.stdout_lines | select('search', 'RHSA') | list | length }}"
+
+- name: Verify kernel version
+  ansible.builtin.shell: uname -r
+  register: kernel_version
+  changed_when: false
+
+# ========================================
+# POST-PATCH VALIDATION - WILL FAIL HERE
+# ========================================
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 3: POST-PATCH VALIDATION"
+
+- name: Simulate service check failure if enabled
+  ansible.builtin.set_fact:
+    simulate_service_failure: true
+  when: simulate_service_fail | default(false)
+
+- name: Display post-patch security assessment
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  SECURITY EXPOSURE - AFTER PATCHING"
+      - "=========================================="
+      - "Security Advisories Before: {{ security_count_before }}"
+      - "Security Advisories After: {{ security_count_after }}"
+      - "CVEs Patched: {{ security_count_before | int - security_count_after | int }}"
+      - "=========================================="
+
+- name: Check if reboot is required
+  ansible.builtin.command: /usr/bin/needs-restarting -r
+  register: reboot_required
+  failed_when: false
+  changed_when: reboot_required.rc != 0
+
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "⚠ POST-PATCH VALIDATION FAILED"
+
+- name: Mark as post-patch validation failure
+  ansible.builtin.set_fact:
+    patch_status: "postcheck_failed"
+    failure_reason: "Post-patch service validation failed"
+    note: "Patches applied but system validation failed"
+
+- name: Display post-patch validation failure
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  POST-PATCH VALIDATION FAILED"
+      - "=========================================="
+      - "Security Patching: COMPLETED"
+      - "Packages Updated: {{ security_patch_result.changed }}"
+      - "CVEs Patched: {{ security_count_before | int - security_count_after | int }}"
+      - ""
+      - "Validation: FAILED"
+      - "Issue: Service health check failed"
+      - "Possible causes:"
+      - "  - Critical service not running"
+      - "  - Application compatibility issue"
+      - "  - Configuration file conflict"
+      - ""
+      - "ACTION: Playbook stopped"
+      - "Manual intervention required"
+      - "Rollback may be needed"
+      - "=========================================="
+
+- name: Generate post-patch validation failure report
+  ansible.builtin.copy:
+    content: |
+      Post-Patch Validation Failure Report
+      =====================================
+      Date: {{ ansible_date_time.iso8601 }}
+      Server: {{ inventory_hostname }}
+
+      Patch Status: POSTCHECK_FAILED
+
+      Security Patching Results:
+      - Security Advisories Before: {{ security_count_before }}
+      - Security Advisories After: {{ security_count_after }}
+      - CVEs Patched: {{ security_count_before | int - security_count_after | int }}
+      - Patch Installation: SUCCESS
+
+      Package Updates:
+      - Kernel: {{ kernel_before_patch }} → {{ kernel_after_patch }}
+      - glibc: {{ glibc_before_patch }} → {{ glibc_after_patch }}
+      - openssl: {{ openssl_before_patch }} → {{ openssl_after_patch }}
+      - systemd: {{ systemd_before_patch }} → {{ systemd_after_patch }}
+
+      Validation Failure:
+      - Phase: Post-Patch Service Validation
+      - Status: FAILED
+      - Issue: Service health check failed
+
+      Root Cause:
+      Service or application not responding after patching
+
+      Action Required:
+      1. Check service status: systemctl status <service>
+      2. Review application logs
+      3. Check for configuration conflicts
+      4. Consider rollback if critical
+      5. Coordinate with application team
+
+      System State:
+      - Packages updated: YES
+      - Validation: FAILED
+      - Reboot required: {% if reboot_required.rc != 0 %}YES{% else %}NO{% endif %}
+    dest: "/tmp/rhel_security_postcheck_fail_{{ inventory_hostname }}.txt"
+
+- name: Display recovery instructions
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  RECOVERY INSTRUCTIONS"
+      - "=========================================="
+      - "Issue: Post-patch validation failed"
+      - ""
+      - "Security patches were applied successfully"
+      - "But system validation failed"
+      - ""
+      - "Steps to fix:"
+      - "1. Check failed service: systemctl status <service>"
+      - "2. Review logs: journalctl -xe"
+      - "3. Verify package compatibility"
+      - "4. Consider rollback: dnf history undo"
+      - "5. Coordinate with application team"
+      - ""
+      - "Rollback command if needed:"
+      - "  dnf history undo last"
+      - "=========================================="
+
+- name: Log post-patch validation failure
+  ansible.builtin.lineinfile:
+    path: "{{ log_file }}"
+    line: "{{ ansible_date_time.iso8601 }} - Post-patch validation FAILED: Service check failed on {{ inventory_hostname }}"
+    create: true
+
+- name: Stop execution
+  ansible.builtin.fail:
+    msg: "Stopping execution: Post-patch validation failed - manual intervention required"

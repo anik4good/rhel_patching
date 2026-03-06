@@ -1,0 +1,417 @@
+---
+# TC-SEC-001: Successful Security Patching
+# This scenario demonstrates security-only patching with CVE tracking
+# Supports 3 repository options: cdn, satellite, jump (all pre-configured)
+
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "RHEL SECURITY PATCHING POC - SUCCESS SCENARIO (TC-SEC-001)"
+
+- name: Display target server information
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  SECURITY PATCHING: {{ inventory_hostname }}"
+      - "=========================================="
+      - "OS: {{ ansible_distribution }} {{ ansible_distribution_version }}"
+      - "Kernel: {{ ansible_kernel }}"
+      - "IP: {{ ansible_default_ipv4.address | default(ansible_hostname) }}"
+      - "Repository: {{ repo_type | default('cdn') | upper }}"
+      - "Auto Reboot: {{ auto_reboot | default(false) }}"
+
+# ========================================
+# PRE-CHECK PHASE - SECURITY EXPOSURE ANALYSIS
+# ========================================
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 1: PRE-CHECK & SECURITY EXPOSURE ANALYSIS"
+
+- name: Get current RHEL version
+  ansible.builtin.shell: cat /etc/redhat-release
+  register: version_before
+  changed_when: false
+
+- name: Display current version
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  CURRENT VERSION"
+      - "=========================================="
+      - "{{ version_before.stdout }}"
+      - "=========================================="
+
+- name: Check sufficient disk space
+  ansible.builtin.shell: df / | tail -1 | awk '{print $5}' | sed 's/%//'
+  register: disk_usage
+  changed_when: false
+  failed_when: disk_usage.stdout|int > disk_threshold
+
+- name: Display disk usage status
+  ansible.builtin.debug:
+    msg: "✓ Disk space check passed: {{ disk_usage.stdout }}% used"
+
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 1.5: REPOSITORY CHECK ({{ repo_type | default('cdn') | upper }})"
+
+- name: Verify repository accessible - CDN
+  block:
+    - name: Display CDN repository check
+      ansible.builtin.debug:
+        msg: "Using Red Hat CDN repositories"
+
+    - name: Verify subscription status
+      ansible.builtin.command: subscription-manager status
+      register: sub_status
+      changed_when: false
+      failed_when: false
+
+    - name: Display subscription status
+      ansible.builtin.debug:
+        msg: "{{ sub_status.stdout if sub_status.rc == 0 else 'Not registered to CDN' }}"
+
+    - name: Verify repository accessible
+      ansible.builtin.command: dnf repolist
+      register: repo_check
+      failed_when: repo_check.rc != 0
+      changed_when: false
+
+    - name: Display repository status
+      ansible.builtin.debug:
+        msg: "✓ CDN repositories accessible"
+
+  when: repo_type == "cdn" or repo_type is not defined
+
+- name: Verify repository accessible - Satellite
+  block:
+    - name: Display Satellite repository check
+      ansible.builtin.debug:
+        msg: "Using Satellite repositories (already configured)"
+
+    - name: Verify repository accessible
+      ansible.builtin.command: dnf repolist
+      register: repo_check
+      failed_when: repo_check.rc != 0
+      changed_when: false
+
+    - name: Display repository status
+      ansible.builtin.debug:
+        msg: "✓ Satellite repositories accessible"
+
+  when: repo_type == "satellite"
+
+- name: Verify repository accessible - Jump Server
+  block:
+    - name: Display Jump Server repository check
+      ansible.builtin.debug:
+        msg: "Using Jump Server repositories (already configured)"
+
+    - name: Verify repository accessible
+      ansible.builtin.command: dnf repolist
+      register: repo_check
+      failed_when: repo_check.rc != 0
+      changed_when: false
+
+    - name: Display repository status
+      ansible.builtin.debug:
+        msg: "✓ Jump Server repositories accessible"
+
+  when: repo_type == "jump"
+
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 2: SECURITY EXPOSURE ASSESSMENT (BEFORE PATCHING)"
+
+- name: List available security advisories
+  ansible.builtin.command: dnf updateinfo list security
+  register: security_list_before
+  changed_when: false
+  failed_when: false
+
+- name: Count security advisories available
+  ansible.builtin.set_fact:
+    security_count_before: "{{ security_list_before.stdout_lines | select('search', 'RHSA') | list | length }}"
+
+- name: Display security exposure before patching
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  SECURITY EXPOSURE - BEFORE PATCHING"
+      - "=========================================="
+      - "Security Advisories Available: {{ security_count_before }}"
+      - "{% if security_count_before > 0 %}Risk Level: HIGH{% else %}Risk Level: LOW{% endif %}"
+      - "=========================================="
+
+- name: Get list of packages that will be updated
+  ansible.builtin.command: dnf updateinfo list sec --available
+  register: packages_to_patch
+  changed_when: false
+  failed_when: false
+
+- name: Display packages to be patched
+  ansible.builtin.debug:
+    msg: "{{ packages_to_patch.stdout_lines if packages_to_patch.rc == 0 else [] }}"
+  when: packages_to_patch.rc == 0
+
+# ========================================
+# SECURITY PATCHING PHASE
+# ========================================
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 3: APPLYING SECURITY PATCHES"
+
+- name: Display patching information
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  SECURITY PATCHING DETAILS"
+      - "=========================================="
+      - "Patch Type: SECURITY ONLY"
+      - "Method: dnf module with security=yes"
+      - "Auto Reboot: {{ auto_reboot | default(false) }}"
+      - "=========================================="
+
+- name: Get package versions before patching
+  ansible.builtin.shell: |
+    rpm -q kernel --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q glibc --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q openssl --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q systemd --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+  register: package_versions_before
+  changed_when: false
+
+- name: Set package version facts (before)
+  ansible.builtin.set_fact:
+    kernel_before_patch: "{{ package_versions_before.stdout_lines[0] | default('unknown') }}"
+    glibc_before_patch: "{{ package_versions_before.stdout_lines[1] | default('unknown') }}"
+    openssl_before_patch: "{{ package_versions_before.stdout_lines[2] | default('unknown') }}"
+    systemd_before_patch: "{{ package_versions_before.stdout_lines[3] | default('unknown') }}"
+
+- name: Clean dnf cache
+  ansible.builtin.command: dnf clean all
+  changed_when: true
+
+- name: Apply security updates only
+  ansible.builtin.dnf:
+    name: '*'
+    state: latest
+    security: yes
+    update_cache: yes
+  register: security_patch_result
+
+- name: Display security patch result
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  SECURITY PATCH RESULT"
+      - "=========================================="
+      - "Changed: {{ security_patch_result.changed }}"
+      - "Packages Updated: {{ security_patch_result.msg | default('Security updates applied') }}"
+      - "=========================================="
+
+# ========================================
+# POST-PATCH VALIDATION
+# ========================================
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 4: POST-PATCH SECURITY ASSESSMENT"
+
+- name: List remaining security advisories
+  ansible.builtin.command: dnf updateinfo list security
+  register: security_list_after
+  changed_when: false
+  failed_when: false
+
+- name: Count remaining security advisories
+  ansible.builtin.set_fact:
+    security_count_after: "{{ security_list_after.stdout_lines | select('search', 'RHSA') | list | length }}"
+
+- name: Display security exposure after patching
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  SECURITY EXPOSURE - AFTER PATCHING"
+      - "=========================================="
+      - "Security Advisories Before: {{ security_count_before }}"
+      - "Security Advisories After: {{ security_count_after }}"
+      - "CVEs Patched: {{ security_count_before | int - security_count_after | int }}"
+      - "{% if security_count_after == 0 %}Status: ALL SECURITY ADVISORIES APPLIED{% else %}Status: Some advisories remain{% endif %}"
+      - "=========================================="
+
+- name: Get package versions after patching
+  ansible.builtin.shell: |
+    rpm -q kernel --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q glibc --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q openssl --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q systemd --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+  register: package_versions_after
+  changed_when: false
+
+- name: Set package version facts (after)
+  ansible.builtin.set_fact:
+    kernel_after_patch: "{{ package_versions_after.stdout_lines[0] | default('unknown') }}"
+    glibc_after_patch: "{{ package_versions_after.stdout_lines[1] | default('unknown') }}"
+    openssl_after_patch: "{{ package_versions_after.stdout_lines[2] | default('unknown') }}"
+    systemd_after_patch: "{{ package_versions_after.stdout_lines[3] | default('unknown') }}"
+
+- name: Verify kernel version
+  ansible.builtin.shell: uname -r
+  register: kernel_version
+  changed_when: false
+
+# ========================================
+# REBOOT CHECK PHASE
+# ========================================
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 5: REBOOT CHECK"
+
+- name: Check if reboot is required
+  ansible.builtin.command: /usr/bin/needs-restarting -r
+  register: reboot_required
+  failed_when: false
+  changed_when: reboot_required.rc != 0
+
+- name: Display reboot status
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  REBOOT STATUS"
+      - "=========================================="
+      - "Reboot Required: {{ 'YES' if reboot_required.rc != 0 else 'NO' }}"
+      - "{% if reboot_required.rc != 0 %}Reason: {{ reboot_required.stdout }}{% endif %}"
+      - "Auto Reboot Setting: {{ auto_reboot | default(false) }}"
+      - "{% if auto_reboot | default(false) %}Action: Will reboot automatically{% else %}Action: Manual reboot required (banking standard){% endif %}"
+      - "=========================================="
+
+- name: Reboot the server if required AND auto_reboot is enabled
+  ansible.builtin.reboot:
+    msg: "Rebooting after security patching"
+    pre_reboot_delay: "{{ pre_reboot_delay }}"
+    reboot_timeout: "{{ reboot_timeout }}"
+  when:
+    - reboot_required.rc != 0
+    - auto_reboot | default(false)
+
+- name: Confirm system is back online
+  ansible.builtin.ping:
+  register: ping_result
+  retries: 30
+  delay: 10
+  until: ping_result is succeeded
+  when: auto_reboot | default(false)
+
+- name: Manual reboot required message
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  MANUAL REBOOT REQUIRED"
+      - "=========================================="
+      - "Security patches applied successfully"
+      - "Reboot is required for full effect"
+      - "Please coordinate with application team"
+      - "Execute: reboot"
+      - "=========================================="
+  when:
+    - reboot_required.rc != 0
+    - not (auto_reboot | default(false))
+
+# ========================================
+# FINAL VALIDATION & REPORTING
+# ========================================
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 6: FINAL VALIDATION"
+
+- name: Get final version
+  ansible.builtin.shell: cat /etc/redhat-release
+  register: version_final
+  changed_when: false
+
+- name: Display final confirmation
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  SECURITY PATCHING COMPLETE"
+      - "=========================================="
+      - "System: {{ inventory_hostname }}"
+      - "Final Version: {{ version_final.stdout }}"
+      - "CVEs Patched: {{ security_count_before | int - security_count_after | int }}"
+      - "Packages Updated: {{ security_patch_result.changed }}"
+      - "Repository Used: {{ repo_type | default('cdn') }}"
+      - "=========================================="
+
+- name: Create summary file on target
+  ansible.builtin.copy:
+    content: |
+      RHEL Security Patching Summary
+      ==============================
+      Date: {{ ansible_date_time.iso8601 }}
+      Server: {{ inventory_hostname }}
+
+      OS Version: {{ version_final.stdout }}
+      Kernel Version: {{ kernel_version.stdout }}
+
+      Security Patching Results:
+      - Security Advisories Before: {{ security_count_before }}
+      - Security Advisories After: {{ security_count_after }}
+      - CVEs Patched: {{ security_count_before | int - security_count_after | int }}
+
+      Package Updates:
+      - Kernel: {{ kernel_before_patch }} → {{ kernel_after_patch }}
+      - glibc: {{ glibc_before_patch }} → {{ glibc_after_patch }}
+      - openssl: {{ openssl_before_patch }} → {{ openssl_after_patch }}
+      - systemd: {{ systemd_before_patch }} → {{ systemd_after_patch }}
+
+      Reboot Required: {% if reboot_required.rc != 0 %}YES{% else %}NO{% endif %}
+      {% if reboot_required.rc != 0 %}
+      Reboot Reason: {{ reboot_required.stdout }}
+      {% endif %}
+
+      Repository Type: {{ repo_type | default('cdn') }}
+
+      Patching Method: dnf module with security=yes
+
+      Status: SUCCESS
+    dest: "{{ summary_file }}"
+    mode: '0644'
+
+- name: Log successful security patching
+  ansible.builtin.lineinfile:
+    path: "{{ log_file }}"
+    line: "{{ ansible_date_time.iso8601 }} - Security patching SUCCESS: {{ security_count_before | int - security_count_after | int }} CVEs patched via {{ repo_type | default('cdn') }}"
+    create: true
+
+# ========================================
+# HTML REPORT GENERATION
+# ========================================
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 7: HTML REPORT GENERATION"
+
+- name: Generate HTML report
+  ansible.builtin.template:
+    src: templates/report.html.j2
+    dest: "/tmp/rhel_security_patch_report_{{ inventory_hostname }}.html"
+    mode: '0644'
+  vars:
+    scenario_name: "security_patch"
+    patch_status: "success"
+    version_before: "{{ version_before.stdout }}"
+    version_after: "{{ version_final.stdout }}"
+    kernel_before: "{{ kernel_before_patch }}"
+    kernel_after: "{{ kernel_after_patch }}"
+    glibc_before: "{{ glibc_before_patch }}"
+    glibc_after: "{{ glibc_after_patch }}"
+    openssl_before: "{{ openssl_before_patch }}"
+    openssl_after: "{{ openssl_after_patch }}"
+    systemd_before: "{{ systemd_before_patch }}"
+    systemd_after: "{{ systemd_after_patch }}"
+    reboot_required: "{{ reboot_required.rc != 0 }}"
+    security_count_before: "{{ security_count_before }}"
+    security_count_after: "{{ security_count_after }}"
+    cves_patched: "{{ security_count_before | int - security_count_after | int }}"
+
+- name: Display report location
+  ansible.builtin.debug:
+    msg: "✓ HTML report generated: /tmp/rhel_security_patch_report_{{ inventory_hostname }}.html"

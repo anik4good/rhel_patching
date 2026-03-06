@@ -1,0 +1,7 @@
+[rhel_security_poc_servers]
+192.168.8.51
+
+[rhel_security_poc_servers:vars]
+ansible_become=true
+ansible_become_method=sudo
+ansible_python_interpreter=/usr/bin/python3

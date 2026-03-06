@@ -1,0 +1,96 @@
+---
+# RHEL Security Patching POC - Main Playbook
+# Demonstrates security-only patching with CVE tracking and banking standards
+# Supports 3 repository options: cdn, satellite, jump
+# Usage: ansible-playbook -i inventory site.yml --tags <scenario>
+#
+# Repository selection via variable:
+#   -e "repo_type=cdn"          : Use Red Hat CDN (default)
+#   -e "repo_type=satellite"    : Use Satellite (already configured)
+#   -e "repo_type=jump"         : Use Jump Server (already configured)
+#
+# Reboot control via variable:
+#   -e "auto_reboot=true"       : Auto-reboot after patching
+#   -e "auto_reboot=false"      : Manual reboot required (default for banking)
+#
+# Scenario selection via tags:
+#   - success                   : Successful security patching
+#   - precheck_fail             : Pre-check validation failure
+#   - patch_fail                : Patch installation failure
+#   - postcheck_fail            : Post-patch validation failure
+
+# ========================================
+# SUCCESS SCENARIO
+# ========================================
+
+- name: RHEL Security Patching POC - Success
+  hosts: all
+  become: true
+  serial: 1
+  max_fail_percentage: 0
+  vars:
+    repo_type: "{{ repo_type | default('cdn') }}"
+    disk_threshold: 90
+    reboot_timeout: 600
+    pre_reboot_delay: 10
+    auto_reboot: "{{ auto_reboot | default(false) }}"
+    log_file: /var/log/rhel_security_patch.log
+    summary_file: /tmp/rhel_security_patch_summary_{{ inventory_hostname }}.txt
+  tasks:
+    - ansible.builtin.include_tasks: scenarios/success.yml
+  tags:
+    - success
+    - all_scenarios
+
+# ========================================
+# FAILURE SCENARIOS
+# ========================================
+
+- name: RHEL Security Patching POC - Pre-Check Failure (TC-SEC-002)
+  hosts: all
+  become: true
+  serial: 1
+  max_fail_percentage: 0
+  vars:
+    repo_type: "{{ repo_type | default('cdn') }}"
+    disk_threshold: 90
+    simulate_disk_full: true
+    simulated_disk_usage: 95
+    log_file: /var/log/rhel_security_patch_precheck_fail.log
+  tasks:
+    - ansible.builtin.include_tasks: scenarios/precheck_fail.yml
+  tags:
+    - precheck_fail
+    - all_scenarios
+
+- name: RHEL Security Patching POC - Patch Installation Failure (TC-SEC-003)
+  hosts: all
+  become: true
+  serial: 1
+  max_fail_percentage: 0
+  vars:
+    repo_type: "{{ repo_type | default('cdn') }}"
+    disk_threshold: 90
+    simulate_repo_fail: true
+    log_file: /var/log/rhel_security_patch_fail.log
+  tasks:
+    - ansible.builtin.include_tasks: scenarios/patch_fail.yml
+  tags:
+    - patch_fail
+    - all_scenarios
+
+- name: RHEL Security Patching POC - Post-Patch Validation Failure (TC-SEC-004)
+  hosts: all
+  become: true
+  serial: 1
+  max_fail_percentage: 0
+  vars:
+    repo_type: "{{ repo_type | default('cdn') }}"
+    disk_threshold: 90
+    simulate_service_fail: true
+    log_file: /var/log/rhel_security_patch_postcheck_fail.log
+  tasks:
+    - ansible.builtin.include_tasks: scenarios/postcheck_fail.yml
+  tags:
+    - postcheck_fail
+    - all_scenarios
