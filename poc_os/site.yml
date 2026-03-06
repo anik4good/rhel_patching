@@ -1,0 +1,56 @@
+---
+# RHEL OS Version Patching POC - Main Playbook
+# Demonstrates 9.0 → 9.4 upgrade with failure handling
+# Usage: ansible-playbook -i inventory site.yml --tags <scenario>
+
+- name: RHEL OS Patching POC - Success Scenario (TC-OS-001)
+  hosts: all
+  become: true
+  serial: 1
+  max_fail_percentage: 0
+  vars:
+    current_version: "9.0"
+    target_version: "9.4"
+    disk_threshold: 90
+    reboot_timeout: 600
+    pre_reboot_delay: 10
+    log_file: /var/log/rhel_os_upgrade.log
+    summary_file: /tmp/rhel_os_upgrade_summary_{{ inventory_hostname }}.txt
+  tasks:
+    - ansible.builtin.include_tasks: scenarios/success.yml
+  tags:
+    - success
+    - all_scenarios
+
+- name: RHEL OS Patching POC - Pre-Check Failure (TC-OS-002)
+  hosts: all
+  become: true
+  serial: 1
+  vars:
+    current_version: "9.0"
+    target_version: "9.4"
+    disk_threshold: 90
+    simulate_disk_full: true
+    simulated_disk_usage: 95
+    log_file: /var/log/rhel_os_upgrade_precheck_fail.log
+  tasks:
+    - ansible.builtin.include_tasks: scenarios/precheck_fail.yml
+  tags:
+    - precheck_fail
+    - all_scenarios
+
+- name: RHEL OS Patching POC - Upgrade Failure (TC-OS-003)
+  hosts: all
+  become: true
+  serial: 1
+  vars:
+    current_version: "9.0"
+    target_version: "9.4"
+    disk_threshold: 90
+    corrupt_repo: true
+    log_file: /var/log/rhel_os_upgrade_fail.log
+  tasks:
+    - ansible.builtin.include_tasks: scenarios/upgrade_fail.yml
+  tags:
+    - upgrade_fail
+    - all_scenarios
