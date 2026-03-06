@@ -140,6 +140,34 @@
   ansible.builtin.debug:
     msg: "{{ update_count }} updates available"
 
+- name: Get package versions BEFORE upgrade (for comparison)
+  ansible.builtin.shell: |
+    rpm -q kernel --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q glibc --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q openssl --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q openssl-libs --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q systemd --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q bash --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q python3 --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q krb5-libs --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q coreutils --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q NetworkManager --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+  register: package_versions_before
+  changed_when: false
+
+- name: Set package version facts (before upgrade)
+  ansible.builtin.set_fact:
+    kernel_before: "{{ package_versions_before.stdout_lines[0] | default('unknown') }}"
+    glibc_before: "{{ package_versions_before.stdout_lines[1] | default('unknown') }}"
+    openssl_before: "{{ package_versions_before.stdout_lines[2] | default('unknown') }}"
+    openssl_libs_before: "{{ package_versions_before.stdout_lines[3] | default('unknown') }}"
+    systemd_before: "{{ package_versions_before.stdout_lines[4] | default('unknown') }}"
+    bash_before: "{{ package_versions_before.stdout_lines[5] | default('unknown') }}"
+    python3_before: "{{ package_versions_before.stdout_lines[6] | default('unknown') }}"
+    krb5_libs_before: "{{ package_versions_before.stdout_lines[7] | default('unknown') }}"
+    coreutils_before: "{{ package_versions_before.stdout_lines[8] | default('unknown') }}"
+    networkmanager_before: "{{ package_versions_before.stdout_lines[9] | default('unknown') }}"
+
 # ========================================
 # UPGRADE PHASE
 # ========================================
@@ -321,19 +349,33 @@
   ansible.builtin.debug:
     msg: "PHASE 6: HTML REPORT GENERATION"
 
-- name: Get package versions for HTML report
+- name: Get package versions AFTER upgrade (for HTML report)
   ansible.builtin.shell: |
+    rpm -q kernel --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
     rpm -q glibc --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
     rpm -q openssl --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q openssl-libs --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
     rpm -q systemd --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
-  register: package_versions
+    rpm -q bash --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q python3 --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q krb5-libs --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q coreutils --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+    rpm -q NetworkManager --queryformat '%{VERSION}-%{RELEASE}\n' 2>/dev/null || echo "unknown"
+  register: package_versions_after
   changed_when: false
 
-- name: Set package version facts
+- name: Set package version facts (after upgrade)
   ansible.builtin.set_fact:
-    glibc_after: "{{ package_versions.stdout_lines[0] | default('Updated') }}"
-    openssl_after: "{{ package_versions.stdout_lines[1] | default('Updated') }}"
-    systemd_after: "{{ package_versions.stdout_lines[2] | default('Updated') }}"
+    kernel_after: "{{ package_versions_after.stdout_lines[0] | default('unknown') }}"
+    glibc_after: "{{ package_versions_after.stdout_lines[1] | default('unknown') }}"
+    openssl_after: "{{ package_versions_after.stdout_lines[2] | default('unknown') }}"
+    openssl_libs_after: "{{ package_versions_after.stdout_lines[3] | default('unknown') }}"
+    systemd_after: "{{ package_versions_after.stdout_lines[4] | default('unknown') }}"
+    bash_after: "{{ package_versions_after.stdout_lines[5] | default('unknown') }}"
+    python3_after: "{{ package_versions_after.stdout_lines[6] | default('unknown') }}"
+    krb5_libs_after: "{{ package_versions_after.stdout_lines[7] | default('unknown') }}"
+    coreutils_after: "{{ package_versions_after.stdout_lines[8] | default('unknown') }}"
+    networkmanager_after: "{{ package_versions_after.stdout_lines[9] | default('unknown') }}"
 
 - name: Generate HTML report
   ansible.builtin.template:
@@ -345,10 +387,16 @@
     patch_status: "success"
     version_before: "{{ version_before.stdout }}"
     version_after: "{{ version_final.stdout }}"
-    kernel_before: "{{ ansible_kernel }}"
-    kernel_after: "{{ kernel_version.stdout }}"
     reboot_required: "{{ reboot_required.rc != 0 }}"
+
+- name: Fetch HTML report to local machine
+  ansible.builtin.fetch:
+    src: "/tmp/rhel_os_patching_report_{{ inventory_hostname }}.html"
+    dest: "/tmp/rhel_os_patching_report_{{ inventory_hostname }}.html"
+    flat: true
 
 - name: Display report location
   ansible.builtin.debug:
-    msg: "✓ HTML report generated: /tmp/rhel_os_patching_report_{{ inventory_hostname }}.html"
+    msg:
+      - "✓ HTML report generated on {{ inventory_hostname }}: /tmp/rhel_os_patching_report_{{ inventory_hostname }}.html"
+      - "✓ Report downloaded to local machine: /tmp/rhel_os_patching_report_{{ inventory_hostname }}.html"

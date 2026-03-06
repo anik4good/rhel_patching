@@ -68,7 +68,7 @@
         </table>
 
         {% if patch_status == 'success' %}
-        <h2>Package Updates</h2>
+        <h2>Package Updates (10 Key Packages)</h2>
         <div class="server-section">
             <table class="patch-table">
                 <tr>
@@ -80,9 +80,9 @@
                 </tr>
                 <tr class="kernel-row">
                     <td><strong>kernel</strong></td>
-                    <td class="version-before">{{ kernel_before }}</td>
+                    <td class="version-before">{{ kernel_before | default('Updated') }}</td>
                     <td class="arrow">→</td>
-                    <td class="version-after">{{ kernel_after }}</td>
+                    <td class="version-after">{{ kernel_after | default('Updated') }}</td>
                     <td>KERNEL</td>
                 </tr>
                 <tr class="security-row">
@@ -99,12 +99,54 @@
                     <td class="version-after">{{ openssl_after | default('Updated') }}</td>
                     <td>SECURITY</td>
                 </tr>
+                <tr class="security-row">
+                    <td><strong>openssl-libs</strong></td>
+                    <td class="version-before">{{ openssl_libs_before | default('Updated') }}</td>
+                    <td class="arrow">→</td>
+                    <td class="version-after">{{ openssl_libs_after | default('Updated') }}</td>
+                    <td>SECURITY</td>
+                </tr>
                 <tr>
                     <td><strong>systemd</strong></td>
                     <td class="version-before">{{ systemd_before | default('Updated') }}</td>
                     <td class="arrow">→</td>
                     <td class="version-after">{{ systemd_after | default('Updated') }}</td>
                     <td>BUGFIX</td>
+                </tr>
+                <tr>
+                    <td><strong>bash</strong></td>
+                    <td class="version-before">{{ bash_before | default('Updated') }}</td>
+                    <td class="arrow">→</td>
+                    <td class="version-after">{{ bash_after | default('Updated') }}</td>
+                    <td>SHELL</td>
+                </tr>
+                <tr>
+                    <td><strong>python3</strong></td>
+                    <td class="version-before">{{ python3_before | default('Updated') }}</td>
+                    <td class="arrow">→</td>
+                    <td class="version-after">{{ python3_after | default('Updated') }}</td>
+                    <td>RUNTIME</td>
+                </tr>
+                <tr class="security-row">
+                    <td><strong>krb5-libs</strong></td>
+                    <td class="version-before">{{ krb5_libs_before | default('Updated') }}</td>
+                    <td class="arrow">→</td>
+                    <td class="version-after">{{ krb5_libs_after | default('Updated') }}</td>
+                    <td>SECURITY</td>
+                </tr>
+                <tr>
+                    <td><strong>coreutils</strong></td>
+                    <td class="version-before">{{ coreutils_before | default('Updated') }}</td>
+                    <td class="arrow">→</td>
+                    <td class="version-after">{{ coreutils_after | default('Updated') }}</td>
+                    <td>SYSTEM</td>
+                </tr>
+                <tr>
+                    <td><strong>NetworkManager</strong></td>
+                    <td class="version-before">{{ networkmanager_before | default('Updated') }}</td>
+                    <td class="arrow">→</td>
+                    <td class="version-after">{{ networkmanager_after | default('Updated') }}</td>
+                    <td>NETWORK</td>
                 </tr>
             </table>
         </div>
