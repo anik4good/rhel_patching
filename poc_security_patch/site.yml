@@ -33,7 +33,7 @@
     disk_threshold: 90
     reboot_timeout: 600
     pre_reboot_delay: 10
-    auto_reboot: "{{ auto_reboot | default(false) }}"
+    auto_reboot: "{{ auto_reboot_extra | default(false) }}"
     log_file: /var/log/rhel_security_patch.log
     summary_file: /tmp/rhel_security_patch_summary_{{ inventory_hostname }}.txt
   tasks:
