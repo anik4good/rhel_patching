@@ -73,7 +73,7 @@
     - name: Fail if system is not registered to Subscription Manager
       ansible.builtin.fail:
         msg: "System is not registered to Subscription Manager. Please register first using: subscription-manager register"
-      when: sub_status.rc != 0
+      when: "'subscribed' not in sub_status.stdout.lower()"
 
     - name: Display repository check
       ansible.builtin.debug:
