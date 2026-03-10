@@ -442,14 +442,14 @@
 - name: Fetch HTML report to local machine
   ansible.builtin.fetch:
     src: "/tmp/rhel_os_patching_report_{{ inventory_hostname }}_{{ ansible_date_time.iso8601 }}.html"
-    dest: "/tmp/rhel_os_patching_report_{{ inventory_hostname }}_{{ ansible_date_time.iso8601 }}.html"
+    dest: "{{ report_dest | default('/tmp') }}/rhel_os_patching_report_{{ inventory_hostname }}_{{ ansible_date_time.iso8601 }}.html"
     flat: true
 
 - name: Display report location
   ansible.builtin.debug:
     msg:
       - "✓ HTML report generated on {{ inventory_hostname }}: /tmp/rhel_os_patching_report_{{ inventory_hostname }}_{{ ansible_date_time.iso8601 }}.html"
-      - "✓ Report downloaded to local machine: /tmp/rhel_os_patching_report_{{ inventory_hostname }}_{{ ansible_date_time.iso8601 }}.html"
+      - "✓ Report downloaded to control node: {{ report_dest | default('/tmp') }}/rhel_os_patching_report_{{ inventory_hostname }}_{{ ansible_date_time.iso8601 }}.html"
 
 # ========================================
 # PHASE 7: AGGREGATED DATA COLLECTION
@@ -498,6 +498,8 @@
         {% if krb5_libs_before != krb5_libs_after %} {% set security_count = security_count + 1 %}{% endif %}
         {{ security_count }}
       timestamp: "{{ ansible_date_time.iso8601 }}"
+
+---
 
 # ========================================
 # AGGREGATED SUMMARY REPORT GENERATION
@@ -558,7 +560,7 @@
     - name: Generate aggregated HTML report
       ansible.builtin.template:
         src: templates/aggregated_report.html.j2
-        dest: "/tmp/rhel_os_aggregated_report_{{ report_timestamp }}.html"
+        dest: "{{ report_dest | default('/tmp') }}/rhel_os_aggregated_report_{{ report_timestamp }}.html"
         mode: '0644'
       vars:
         report_data: "{{ aggregated_by_env }}"
@@ -578,7 +580,7 @@
           - "=========================================="
           - "  AGGREGATED REPORT GENERATED"
           - "=========================================="
-          - "Location: /tmp/rhel_os_aggregated_report_{{ report_timestamp }}.html"
+          - "Location: {{ report_dest | default('/tmp') }}/rhel_os_aggregated_report_{{ report_timestamp }}.html"
           - "Servers processed: {{ total_servers | default(0) }}"
           - "Success rate: {{ percentage_complete | default(0) }}%"
           - "=========================================="
