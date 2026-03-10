@@ -60,7 +60,10 @@
     - name: Fail if system is not registered to Subscription Manager
       ansible.builtin.fail:
         msg: "PRE-CHECK FAILED: System is not registered to Subscription Manager. Please register first using: subscription-manager register"
-      when: "'subscribed' not in sub_status.stdout.lower()"
+      when: |
+        'Content Access Mode' not in sub_status.stdout and
+        'System Status' not in sub_status.stdout and
+        'registered' not in sub_status.stdout.lower()
 
     - name: Verify repository accessible
       ansible.builtin.command: dnf repolist
@@ -89,7 +92,10 @@
     - name: Fail if not registered to Satellite
       ansible.builtin.fail:
         msg: "PRE-CHECK FAILED: System is not registered to Satellite. Please register first."
-      when: "'subscribed' not in satellite_status.stdout.lower()"
+      when: |
+        'Content Access Mode' not in satellite_status.stdout and
+        'System Status' not in satellite_status.stdout and
+        'registered' not in satellite_status.stdout.lower()
 
     - name: Verify repository accessible
       ansible.builtin.command: dnf repolist
