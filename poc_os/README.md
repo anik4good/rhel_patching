@@ -1,7 +1,7 @@
 # RHEL OS Version Upgrade POC
 
-**Version:** 2.0
-**Date:** March 6, 2026
+**Version:** 2.1
+**Date:** March 10, 2026
 **Purpose:** Proof of concept for RHEL OS minor version upgrade automation (9.0 → 9.x)
 
 ---
@@ -35,13 +35,15 @@ This POC demonstrates automated RHEL OS version upgrades with comprehensive fail
 
 ### Repository Options
 
-The playbook supports 3 repository types (all assumed pre-configured):
+The playbook supports 3 repository types:
 
-| Type | Description | Usage |
-|------|-------------|-------|
-| **cdn** | Red Hat CDN (default) | `-e "repo_type_input=cdn"` |
-| **satellite** | Red Hat Satellite (already configured) | `-e "repo_type_input=satellite"` |
-| **jump** | Jump Server (already configured) | `-e "repo_type_input=jump"` |
+| Type | Description | Usage | Upgrade Method |
+|------|-------------|-------|----------------|
+| **cdn** | Red Hat CDN (default) | `-e "repo_type_input=cdn"` | `subscription-manager release --set` + `dnf update` |
+| **satellite** | Red Hat Satellite (already configured) | `-e "repo_type_input=satellite"` | `dnf upgrade --releasever` |
+| **jump** | Jump Server (already configured) | `-e "repo_type_input=jump"` | `dnf upgrade --releasever` |
+
+**Important:** For CDN, the playbook automatically validates Subscription Manager registration and uses the proper Red Hat-recommended workflow.
 
 ### Version Support
 
@@ -71,19 +73,34 @@ The playbook supports upgrading to any RHEL 9.x version:
 
 ### Repository Setup
 
-**IMPORTANT:** You must manually configure the target RHEL repository before running these playbooks. The playbooks assume the repository is already configured.
+**IMPORTANT:** For CDN, the playbook will validate that your system is registered to Subscription Manager before proceeding.
 
 #### Option 1: Red Hat CDN (Default)
+
+**CRITICAL:** System MUST be registered to Subscription Manager before running the playbook.
 
 ```bash
 # Register to Red Hat CDN
 subscription-manager register
 subscription-manager attach --auto
 
+ subscription-manager register --username=your_username --password=your_password
 # Enable required repositories
 subscription-manager repos --enable=rhel-9-for-x86_64-baseos-rpms
 subscription-manager repos --enable=rhel-9-for-x86_64-appstream-rpms
+
+# Verify registration
+subscription-manager status
+
+# Verify repository access
+dnf repolist
 ```
+
+**Playbook Workflow for CDN:**
+1. Validates Subscription Manager registration (fails if not registered)
+2. Sets target release: `subscription-manager release --set=9.4`
+3. Updates system: `dnf update -y`
+4. Validates and reboots if required
 
 #### Option 2: Satellite (Already Configured)
 
@@ -124,13 +141,15 @@ ansible-playbook -i inventory site.yml --tags success \
 ```
 
 **What happens:**
-1. ✅ Pre-checks (disk space, repository accessibility)
-2. ✅ Clean DNF cache
-3. ✅ Execute `dnf upgrade --releasever=<target_version>`
-4. ✅ Reboot (if auto_reboot_extra=true)
-5. ✅ Post-validation (version check, service health)
-6. ✅ Generate summary report
-7. ✅ Generate HTML report
+1. ✅ Pre-checks (disk space, Subscription Manager registration, repository accessibility)
+2. ✅ Set release version: `subscription-manager release --set=<target_version>` (CDN only)
+3. ✅ Clean DNF cache
+4. ✅ Execute `dnf update -y` (CDN) or `dnf upgrade --releasever=<target_version>` (Satellite/Jump)
+5. ✅ Reboot check (using `needs-restarting -r`)
+6. ✅ Reboot if required
+7. ✅ Post-validation (version check, service health)
+8. ✅ Generate summary report
+9. ✅ Generate HTML report
 
 ### Pre-Check Failure Scenario
 
@@ -205,13 +224,14 @@ ansible-playbook -i inventory site.yml --tags postcheck_fail \
 **Purpose:** Demonstrate complete OS upgrade workflow
 
 **Steps:**
-1. Pre-check validation (disk space, repository)
+1. Pre-check validation (disk space, Subscription Manager registration, repository)
 2. Get current OS version
-3. Clean DNF cache
-4. Execute `dnf upgrade --releasever=<target_version>`
-5. Reboot (if enabled)
-6. Post-validation (version, services)
-7. Generate reports
+3. Set release version: `subscription-manager release --set=<target_version>` (CDN)
+4. Clean DNF cache
+5. Execute `dnf update -y` (CDN) or `dnf upgrade --releasever=<target_version>` (other repos)
+6. Reboot check and reboot if required
+7. Post-validation (version, services)
+8. Generate reports
 
 **Expected Result:**
 - Exit code: 0
@@ -232,6 +252,7 @@ ansible-playbook -i inventory site.yml --tags postcheck_fail \
 
 **Failure Simulation:**
 - Disk space check fails (95% usage simulated)
+- OR Subscription Manager not registered (CDN)
 
 **Steps:**
 1. Pre-check validation starts
@@ -245,10 +266,10 @@ ansible-playbook -i inventory site.yml --tags postcheck_fail \
 - Clear error message
 
 **Key Features Demonstrated:**
-- ✅ Pre-flight validation gates
+- ✅ Pre-flight validation gates (disk space, Subscription Manager registration)
 - ✅ Immediate stop on failure
 - ✅ No damage to system
-- ✅ Clear error reporting
+- ✅ Clear error reporting with specific recovery instructions
 
 ### TC-OS-003: Upgrade Failure
 
@@ -343,7 +364,17 @@ TASK [Display disk usage status]
 ok: [rhel-test-01]
 ✓ Disk space check passed: 16% used
 
-TASK [PHASE 2: OS UPGRADE]
+TASK [Set release version in Subscription Manager]
+changed: [rhel-test-01]
+
+TASK [Display release set result]
+ok: [rhel-test-01]
+Release set to 9.4: Release 9.4 is now set.
+
+TASK [Clean dnf cache]
+changed: [rhel-test-01]
+
+TASK [Update system to RHEL 9.4]
 changed: [rhel-test-01]
 
 TASK [Display upgrade result]
@@ -379,12 +410,12 @@ PLAY [RHEL OS PATCHING POC - PRE-CHECK FAILURE SCENARIO (TC-OS-002)]
 TASK [Display target server information]
 ok: [rhel-test-01]
 
-TASK [PHASE 1: PRE-CHECK VALIDATION]
+TASK [PHASE 1.5: REPOSITORY CHECK (CDN)]
 ok: [rhel-test-01]
 
-TASK [Check sufficient disk space (will fail)]
+TASK [Check if system is registered to Subscription Manager]
 fatal: [rhel-test-01]: FAILED! => {
-    "msg": "Insufficient disk space: 95% used. Maximum 90% allowed."
+    "msg": "PRE-CHECK FAILED: System is not registered to Subscription Manager. Please register first using: subscription-manager register"
 }
 
 TASK [Display pre-check failure]
@@ -392,18 +423,29 @@ ok: [rhel-test-01]
 ==========================================
   PRE-CHECK VALIDATION FAILED
 ==========================================
-Check: Disk Space
-Current: 95% used
-Maximum: 90% allowed
+Check: Subscription Manager Registration
+Status: Not registered
+Repository Type: cdn
 
 ACTION: Playbook stopped immediately
 No upgrade attempted
 No system changes made
+
+REQUIRED ACTION:
+Register system using: subscription-manager register
 ==========================================
 
 PLAY RECAP
 rhel-test-01: ok=8 changed=0 failed=1
 ```
+
+**OR** Disk space failure:
+
+```
+TASK [Check sufficient disk space (will fail)]
+fatal: [rhel-test-01]: FAILED! => {
+    "msg": "Insufficient disk space: 95% used. Maximum 90% allowed."
+}
 
 ### Upgrade Failure Scenario
 
@@ -553,6 +595,28 @@ All scenarios log to `/var/log/rhel_os_upgrade_*.log` on target hosts.
 ---
 
 ## Troubleshooting
+
+### "System is not registered to Subscription Manager"
+
+**Problem:** CDN workflow requires Subscription Manager registration
+
+**Solution:**
+```bash
+# Register to Red Hat CDN
+sudo subscription-manager register
+
+# Attach subscription
+sudo subscription-manager attach --auto
+
+# Verify registration
+sudo subscription-manager status
+
+# Enable required repositories
+sudo subscription-manager repos --enable=rhel-9-for-x86_64-baseos-rpms
+sudo subscription-manager repos --enable=rhel-9-for-x86_64-appstream-rpms
+
+# Re-run playbook
+```
 
 ### "Repository not accessible"
 
@@ -766,8 +830,9 @@ max_fail_percentage: 0  # Stop on any failure
 ### Pre-Flight Validation
 
 - Disk space check (stops if > threshold% used)
+- Subscription Manager registration check (CDN - fails if not registered)
 - Repository accessibility check
-- Subscription status check (if using CDN)
+- Available updates count
 
 ### Post-Upgrade Validation
 
@@ -854,6 +919,15 @@ After demonstrating to client:
 | [../README.md](../README.md) | Main project documentation |
 | [poc_security_patch/README.md](../poc_security_patch/README.md) | Security patching POC |
 | [poc/README.md](../poc/README.md) | Package patching POC |
+
+---
+
+## Version History
+
+| Version | Date | Changes | Author |
+|---------|------|---------|--------|
+| 2.1 | Mar 10, 2026 | Updated CDN workflow to use subscription-manager release --set + dnf update | Automation Team |
+| 2.0 | Mar 6, 2026 | Initial OS upgrade POC documentation | Automation Team |
 
 ---
 
