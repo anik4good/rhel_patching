@@ -450,3 +450,135 @@
     msg:
       - "✓ HTML report generated on {{ inventory_hostname }}: /tmp/rhel_os_patching_report_{{ inventory_hostname }}_{{ ansible_date_time.iso8601 }}.html"
       - "✓ Report downloaded to local machine: /tmp/rhel_os_patching_report_{{ inventory_hostname }}_{{ ansible_date_time.iso8601 }}.html"
+
+# ========================================
+# PHASE 7: AGGREGATED DATA COLLECTION
+# ========================================
+- name: Store patching data for aggregation
+  ansible.builtin.set_fact:
+    cacheable: yes
+    patching_data:
+      hostname: "{{ inventory_hostname }}"
+      ip_address: "{{ ansible_default_ipv4.address | default('N/A') }}"
+      environment: "{{ inventory_file.split('/') | last | replace('.ini', '') | replace('.yml', '') | upper }}"
+      status: "success"
+      version_before: "{{ version_before.stdout }}"
+      version_after: "{{ version_final.stdout }}"
+      kernel_before: "{{ kernel_before }}"
+      kernel_after: "{{ kernel_after }}"
+      kernel_updated: "{{ kernel_before != kernel_after }}"
+      packages_updated:
+        kernel: "{{ kernel_before }}"
+        glibc: "{{ glibc_before }}"
+        openssl: "{{ openssl_before }}"
+        openssl_libs: "{{ openssl_libs_before }}"
+        systemd: "{{ systemd_before }}"
+        bash: "{{ bash_before }}"
+        python3: "{{ python3_before }}"
+        krb5_libs: "{{ krb5_libs_before }}"
+        coreutils: "{{ coreutils_before }}"
+        networkmanager: "{{ networkmanager_before }}"
+      packages_updated_after:
+        kernel: "{{ kernel_after }}"
+        glibc: "{{ glibc_after }}"
+        openssl: "{{ openssl_after }}"
+        openssl_libs: "{{ openssl_libs_after }}"
+        systemd: "{{ systemd_after }}"
+        bash: "{{ bash_after }}"
+        python3: "{{ python3_after }}"
+        krb5_libs: "{{ krb5_libs_after }}"
+        coreutils: "{{ coreutils_after }}"
+        networkmanager: "{{ networkmanager_after }}"
+      reboot_required: "{{ reboot_required.rc != 0 }}"
+      patches_applied: "{{ 10 }}"
+      security_updates: >-
+        {% set security_count = 0 %}
+        {% if openssl_before != openssl_after %} {% set security_count = security_count + 1 %}{% endif %}
+        {% if openssl_libs_before != openssl_libs_after %} {% set security_count = security_count + 1 %}{% endif %}
+        {% if krb5_libs_before != krb5_libs_after %} {% set security_count = security_count + 1 %}{% endif %}
+        {{ security_count }}
+      timestamp: "{{ ansible_date_time.iso8601 }}"
+
+# ========================================
+# AGGREGATED SUMMARY REPORT GENERATION
+# ========================================
+- name: Generate aggregated summary report
+  hosts: localhost
+  gather_facts: true
+  vars:
+    report_timestamp: "{{ ansible_date_time.iso8601 }}"
+    security_packages: ['openssl', 'openssl-libs', 'krb5-libs']
+  tasks:
+    - name: Aggregate patching data from all hosts
+      ansible.builtin.set_fact:
+        all_patching_data: "{{ hostvars | dict2items | selectattr('1.patching_data', 'defined') | map(attribute='1.patching_data') | list }}"
+        aggregated_by_env: {}
+        total_servers: 0
+        total_success: 0
+        total_failed: 0
+        total_patches: 0
+        total_kernel_updates: 0
+        total_security_updates: 0
+
+    - name: Group and aggregate data by environment
+      ansible.builtin.set_fact:
+        aggregated_by_env: >-
+          {% set environments = {} %}
+          {% for host in all_patching_data %}
+          {%   set env = host.environment %}
+          {%   if env not in environments %}
+          {%     set _ = environments.update({env: {'servers': [], 'success': 0, 'failed': 0, 'patches': 0, 'kernel_updates': 0, 'security_updates': 0, 'servers_list': []}}) %}
+          {%   endif %}
+          {%   set _ = environments[env]['servers_list'].append(host) %}
+          {%   if host.status == 'success' %}
+          {%     set _ = environments[env]['success'] = environments[env]['success'] + 1 %}
+          {%   else %}
+          {%     set _ = environments[env]['failed'] = environments[env]['failed'] + 1 %}
+          {%   endif %}
+          {%   set _ = environments[env]['patches'] = environments[env]['patches'] + host.patches_applied | int %}
+          {%   if host.kernel_updated | bool %}
+          {%     set _ = environments[env]['kernel_updates'] = environments[env]['kernel_updates'] + 1 %}
+          {%   endif %}
+          {%   set _ = environments[env]['security_updates'] = environments[env]['security_updates'] + host.security_updates | int %}
+          {% endfor %}
+          {{ environments }}
+      when: all_patching_data | length > 0
+
+    - name: Calculate totals across all environments
+      ansible.builtin.set_fact:
+        total_servers: "{{ all_patching_data | length }}"
+        total_success: "{{ all_patching_data | selectattr('status', 'equalto', 'success') | list | length }}"
+        total_failed: "{{ all_patching_data | selectattr('status', 'equalto', 'failed') | list | length }}"
+        total_patches: "{{ all_patching_data | map(attribute='patches_applied') | map('int') | sum }}"
+        total_kernel_updates: "{{ all_patching_data | selectattr('kernel_updated') | list | length }}"
+        total_security_updates: "{{ all_patching_data | map(attribute='security_updates') | map('int') | sum }}"
+        percentage_complete: "{{ (all_patching_data | length > 0) | ternary((total_success | int / total_servers | int * 100) | round(1), 0) }}"
+      when: all_patching_data | length > 0
+
+    - name: Generate aggregated HTML report
+      ansible.builtin.template:
+        src: templates/aggregated_report.html.j2
+        dest: "/tmp/rhel_os_aggregated_report_{{ report_timestamp }}.html"
+        mode: '0644'
+      vars:
+        report_data: "{{ aggregated_by_env }}"
+        totals:
+          total_servers: "{{ total_servers }}"
+          total_success: "{{ total_success }}"
+          total_failed: "{{ total_failed }}"
+          total_patches: "{{ total_patches }}"
+          total_kernel_updates: "{{ total_kernel_updates }}"
+          total_security_updates: "{{ total_security_updates }}"
+          percentage_complete: "{{ percentage_complete }}"
+      when: all_patching_data | length > 0
+
+    - name: Display aggregated report location
+      ansible.builtin.debug:
+        msg:
+          - "=========================================="
+          - "  AGGREGATED REPORT GENERATED"
+          - "=========================================="
+          - "Location: /tmp/rhel_os_aggregated_report_{{ report_timestamp }}.html"
+          - "Servers processed: {{ total_servers | default(0) }}"
+          - "Success rate: {{ percentage_complete | default(0) }}%"
+          - "=========================================="

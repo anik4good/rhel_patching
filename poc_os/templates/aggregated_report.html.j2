@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>RHEL OS Patching - Aggregated Summary Report</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 1400px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1 { color: #333; border-bottom: 3px solid #0066cc; padding-bottom: 10px; }
+        h2 { color: #555; margin-top: 30px; border-bottom: 1px solid #ddd; padding-bottom: 5px; }
+        h3 { color: #666; margin-top: 20px; }
+        .summary-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .summary-table th { background: #0066cc; color: white; padding: 12px; text-align: center; font-weight: bold; }
+        .summary-table td { border: 1px solid #ddd; padding: 10px; text-align: center; }
+        .summary-table tr:nth-child(even) { background: #f9f9f9; }
+        .summary-table tr:hover { background: #f0f0f0; }
+        .status-success { color: #008000; font-weight: bold; }
+        .status-failed { color: #cc0000; font-weight: bold; }
+        .section { margin: 30px 0; }
+        .server-details { margin-top: 20px; }
+        .metadata { margin-top: 30px; padding: 15px; background: #f5f5f5; border-left: 4px solid #0066cc; border-radius: 4px; }
+        .kernel-updated { color: #008000; font-weight: bold; }
+        .kernel-not-updated { color: #999; }
+        .yes { color: #008000; font-weight: bold; }
+        .no { color: #999; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🐴 RHEL OS Patching - Aggregated Summary Report</h1>
+
+        <h2>Summary by Environment</h2>
+        <table class="summary-table">
+            <thead>
+                <tr>
+                    <th>Environment</th>
+                    <th>Servers</th>
+                    <th>Success</th>
+                    <th>Failed</th>
+                    <th>Patches Applied</th>
+                    <th>Kernel Updates</th>
+                    <th>Security Updates</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for env, data in report_data.items() | sort %}
+                <tr>
+                    <td><strong>{{ env | upper }}</strong></td>
+                    <td>{{ data.servers_list | length }}</td>
+                    <td class="status-success">{{ data.success }}</td>
+                    <td class="status-failed">{{ data.failed }}</td>
+                    <td>{{ data.patches }}</td>
+                    <td>{{ data.kernel_updates }}</td>
+                    <td>{{ data.security_updates }}</td>
+                    <td class="status-success">COMPLETE</td>
+                </tr>
+                {% endfor %}
+                <tr style="background: #e6f3ff; font-weight: bold;">
+                    <td>TOTAL</td>
+                    <td>{{ totals.total_servers }}</td>
+                    <td class="status-success">{{ totals.total_success }}</td>
+                    <td class="status-failed">{{ totals.total_failed }}</td>
+                    <td>{{ totals.total_patches }}</td>
+                    <td>{{ totals.total_kernel_updates }}</td>
+                    <td>{{ totals.total_security_updates }}</td>
+                    <td class="status-success">{{ totals.percentage_complete }}% Complete</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h2>Server Details</h2>
+        {% for env in report_data.keys() | sort %}
+        <div class="section">
+            <h3>{{ env | upper }} Environment ({{ report_data[env].servers_list | length }} servers)</h3>
+            <table class="summary-table">
+                <thead>
+                    <tr>
+                        <th>Server</th>
+                        <th>IP Address</th>
+                        <th>OS Version</th>
+                        <th>Kernel Update</th>
+                        <th>Security Updates</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for server in report_data[env].servers_list | sort(attribute='hostname') %}
+                    <tr>
+                        <td><strong>{{ server.hostname }}</strong></td>
+                        <td>{{ server.ip_address }}</td>
+                        <td>{{ server.version_before }} → {{ server.version_after }}</td>
+                        <td style="{% if server.kernel_updated %}color: #008000; font-weight: bold;{% else %}color: #999;{% endif %}">
+                            {{ server.kernel_before }} → {{ server.kernel_after }}
+                        </td>
+                        <td>
+                            {% set sec_updates = [] %}
+                            {% if server.packages_updated.kernel != server.packages_updated_after.kernel %}
+                                {% set _ = sec_updates.append('kernel') %}
+                            {% endif %}
+                            {% if server.packages_updated.openssl != server.packages_updated_after.openssl %}
+                                {% set _ = sec_updates.append('openssl') %}
+                            {% endif %}
+                            {% if server.packages_updated.openssl_libs != server.packages_updated_after.openssl_libs %}
+                                {% set _ = sec_updates.append('openssl-libs') %}
+                            {% endif %}
+                            {% if server.packages_updated.krb5_libs != server.packages_updated_after.krb5_libs %}
+                                {% set _ = sec_updates.append('krb5-libs') %}
+                            {% endif %}
+                            {{ sec_updates | join(', ') | default('None') }}
+                        </td>
+                        <td class="status-success">{{ server.status | upper }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endfor %}
+
+        <div class="metadata">
+            <strong>Generated:</strong> {{ ansible_date_time.iso8601 }} |
+            <strong>Total Servers:</strong> {{ totals.total_servers }} |
+            <strong>Success Rate:</strong> {{ totals.percentage_complete }}%
+        </div>
+    </div>
+</body>
+</html>
