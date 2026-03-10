@@ -405,6 +405,7 @@
   ansible.builtin.set_fact:
     version_before_str: "{{ version_before.stdout }}"
     version_after_str: "{{ version_final.stdout }}"
+    cacheable: no
 
 - name: Generate HTML report
   ansible.builtin.template:
