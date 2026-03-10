@@ -58,16 +58,26 @@
   block:
     - name: Display CDN repository check
       ansible.builtin.debug:
-        msg: "Using Red Hat CDN repositories"
+        msg: "Using Red Hat CDN repositories with Subscription Manager"
 
-    - name: Verify subscription status
+    - name: Check if system is already registered to Subscription Manager
       ansible.builtin.command: subscription-manager status
       register: sub_status
+      failed_when: false
       changed_when: false
 
     - name: Display subscription status
       ansible.builtin.debug:
-        msg: "Subscription Status: {{ sub_status.stdout }}"
+        msg: "Subscription Status: {{ sub_status.stdout | default('Not registered') }}"
+
+    - name: Fail if system is not registered to Subscription Manager
+      ansible.builtin.fail:
+        msg: "System is not registered to Subscription Manager. Please register first using: subscription-manager register"
+      when: sub_status.rc != 0
+
+    - name: Display repository check
+      ansible.builtin.debug:
+        msg: "System is registered to Subscription Manager, checking repository access..."
 
     - name: Verify repository accessible
       ansible.builtin.command: dnf repolist
@@ -183,15 +193,25 @@
       - "Current Version: {{ version_before.stdout }}"
       - "Target Version: {{ target_version }}"
       - "Repository: {{ repo_type | default('cdn') }}"
-      - "Method: dnf upgrade --releasever={{ target_version }}"
+      - "Method: subscription-manager release --set={{ target_version }} + dnf update"
       - "=========================================="
+
+- name: Set release version in Subscription Manager
+  ansible.builtin.command: subscription-manager release --set={{ target_version }}
+  register: release_set_result
+  when: repo_type == "cdn" or repo_type is not defined
+
+- name: Display release set result
+  ansible.builtin.debug:
+    msg: "Release set to {{ target_version }}: {{ release_set_result.stderr | default('Success') }}"
+  when: repo_type == "cdn" or repo_type is not defined
 
 - name: Clean dnf cache
   ansible.builtin.command: dnf clean all
   changed_when: true
 
-- name: Upgrade to RHEL {{ target_version }}
-  ansible.builtin.command: dnf upgrade --releasever={{ target_version }} -y
+- name: Update system to RHEL {{ target_version }}
+  ansible.builtin.command: dnf update -y
   register: upgrade_result
 
 - name: Display upgrade result
@@ -327,7 +347,11 @@
       Repository Type: {{ repo_type | default('cdn') }}
 
       Available Updates: {{ update_count }}
+      {% if repo_type == "cdn" or repo_type is not defined %}
+      Method: subscription-manager release --set={{ target_version }} + dnf update
+      {% else %}
       Method: dnf upgrade --releasever={{ target_version }}
+      {% endif %}
 
       Status: SUCCESS
     dest: "{{ summary_file }}"
@@ -336,7 +360,7 @@
 - name: Log successful upgrade
   ansible.builtin.lineinfile:
     path: "{{ log_file }}"
-    line: "{{ ansible_date_time.iso8601 }} - OS upgrade SUCCESS: {{ version_before.stdout }} → {{ version_final.stdout }} via {{ repo_type | default('cdn') }}"
+    line: "{{ ansible_date_time.iso8601 }} - OS upgrade SUCCESS: {{ version_before.stdout }} → {{ version_final.stdout }} via {{ repo_type | default('cdn') }} (subscription-manager release --set={{ target_version }} + dnf update)"
     create: true
 
 # ========================================

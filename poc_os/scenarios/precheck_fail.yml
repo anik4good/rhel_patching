@@ -37,6 +37,90 @@
       - "{{ version_before.stdout }}"
       - "=========================================="
 
+- name: ===========================================
+  ansible.builtin.debug:
+    msg: "PHASE 1.5: REPOSITORY CHECK ({{ repo_type | default('cdn') | upper }})"
+
+- name: Check Subscription Manager registration - CDN
+  block:
+    - name: Display CDN repository check
+      ansible.builtin.debug:
+        msg: "Checking Red Hat CDN Subscription Manager registration..."
+
+    - name: Check if system is registered to Subscription Manager
+      ansible.builtin.command: subscription-manager status
+      register: sub_status
+      failed_when: false
+      changed_when: false
+
+    - name: Display subscription status
+      ansible.builtin.debug:
+        msg: "Subscription Status: {{ sub_status.stdout | default('Not registered') }}"
+
+    - name: Fail if system is not registered to Subscription Manager
+      ansible.builtin.fail:
+        msg: "PRE-CHECK FAILED: System is not registered to Subscription Manager. Please register first using: subscription-manager register"
+      when: sub_status.rc != 0
+
+    - name: Verify repository accessible
+      ansible.builtin.command: dnf repolist
+      register: repo_check
+      failed_when: repo_check.rc != 0
+      changed_when: false
+
+    - name: Display repository status
+      ansible.builtin.debug:
+        msg: "✓ CDN repositories accessible"
+
+  when: repo_type == "cdn" or repo_type is not defined
+
+- name: Verify repository accessible - Satellite
+  block:
+    - name: Display Satellite repository check
+      ansible.builtin.debug:
+        msg: "Checking Satellite repositories..."
+
+    - name: Verify subscription to Satellite
+      ansible.builtin.command: subscription-manager status
+      register: satellite_status
+      failed_when: false
+      changed_when: false
+
+    - name: Fail if not registered to Satellite
+      ansible.builtin.fail:
+        msg: "PRE-CHECK FAILED: System is not registered to Satellite. Please register first."
+      when: satellite_status.rc != 0
+
+    - name: Verify repository accessible
+      ansible.builtin.command: dnf repolist
+      register: repo_check
+      failed_when: repo_check.rc != 0
+      changed_when: false
+
+    - name: Display repository status
+      ansible.builtin.debug:
+        msg: "✓ Satellite repositories accessible"
+
+  when: repo_type == "satellite"
+
+- name: Verify repository accessible - Jump Server
+  block:
+    - name: Display Jump Server repository check
+      ansible.builtin.debug:
+        msg: "Checking Jump Server repositories..."
+
+    - name: Verify repository accessible
+      ansible.builtin.command: dnf repolist
+      register: repo_check
+      failed_when: repo_check.rc != 0
+      changed_when: false
+
+    - name: Display repository status
+      ansible.builtin.debug:
+        msg: "✓ Jump Server repositories accessible"
+
+  when: repo_type == "jump"
+
 - name: Check sufficient disk space (will fail)
   ansible.builtin.shell: df / | tail -1 | awk '{print $5}' | sed 's/%//'
   register: disk_usage
@@ -57,14 +141,22 @@
   ansible.builtin.debug:
     msg: "⚠ PRE-CHECK FAILED"
 
-- name: Mark as pre-check failure
+- name: Mark as pre-check failure (disk space)
   ansible.builtin.set_fact:
     patch_status: "precheck_failed"
     failure_reason: "Disk space insufficient"
     current_usage: "{{ disk_usage.stdout }}%"
     max_allowed: "{{ disk_threshold }}%"
+  when: disk_usage.stdout|int > disk_threshold
 
-- name: Display pre-check failure
+- name: Mark as pre-check failure (subscription not registered)
+  ansible.builtin.set_fact:
+    patch_status: "precheck_failed"
+    failure_reason: "System not registered to Subscription Manager"
+    subscription_status: "Not registered"
+  when: sub_status is defined and sub_status.rc != 0
+
+- name: Display pre-check failure (disk space)
   ansible.builtin.debug:
     msg:
       - "=========================================="
@@ -78,8 +170,28 @@
       - "No upgrade attempted"
       - "No system changes made"
       - "=========================================="
+  when: disk_usage.stdout|int > disk_threshold
 
-- name: Generate pre-check failure report
+- name: Display pre-check failure (subscription not registered)
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  PRE-CHECK VALIDATION FAILED"
+      - "=========================================="
+      - "Check: Subscription Manager Registration"
+      - "Status: {{ subscription_status }}"
+      - "Repository Type: {{ repo_type | default('cdn') }}"
+      - ""
+      - "ACTION: Playbook stopped immediately"
+      - "No upgrade attempted"
+      - "No system changes made"
+      - ""
+      - "REQUIRED ACTION:"
+      - "Register system using: subscription-manager register"
+      - "=========================================="
+  when: sub_status is defined and sub_status.rc != 0
+
+- name: Generate pre-check failure report (disk space)
   ansible.builtin.copy:
     content: |
       Pre-Check Validation Failure Report
@@ -107,8 +219,40 @@
       - Original OS version: {{ version_before.stdout }}
       - Upgrade NOT attempted
     dest: "/tmp/rhel_os_precheck_fail_{{ inventory_hostname }}.txt"
+  when: disk_usage.stdout|int > disk_threshold
 
-- name: Display recovery instructions
+- name: Generate pre-check failure report (subscription not registered)
+  ansible.builtin.copy:
+    content: |
+      Pre-Check Validation Failure Report
+      =====================================
+      Date: {{ ansible_date_time.iso8601 }}
+      Server: {{ inventory_hostname }}
+
+      Patch Status: PRECHECK_FAILED
+
+      Validation Failure:
+      - Check: Subscription Manager Registration
+      - Repository Type: {{ repo_type | default('cdn') }}
+      - Status: FAILED
+      - Error: System is not registered to Subscription Manager
+
+      Root Cause:
+      System must be registered to {{ repo_type | default('cdn') | upper }} before OS upgrade
+
+      Action Required:
+      1. Register system: subscription-manager register
+      2. Verify registration: subscription-manager status
+      3. Re-run playbook
+
+      System State:
+      - No changes made
+      - Original OS version: {{ version_before.stdout }}
+      - Upgrade NOT attempted
+    dest: "/tmp/rhel_os_precheck_fail_{{ inventory_hostname }}.txt"
+  when: sub_status is defined and sub_status.rc != 0
+
+- name: Display recovery instructions (disk space)
   ansible.builtin.debug:
     msg:
       - "=========================================="
@@ -123,13 +267,47 @@
       - "2. Verify with: df -h /"
       - "3. Re-run playbook"
       - "=========================================="
+  when: disk_usage.stdout|int > disk_threshold
 
-- name: Log pre-check failure
+- name: Display recovery instructions (subscription not registered)
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "  RECOVERY INSTRUCTIONS"
+      - "=========================================="
+      - "Issue: System not registered to Subscription Manager"
+      - "Repository Type: {{ repo_type | default('cdn') | upper }}"
+      - ""
+      - "Steps to fix:"
+      - "1. Register system: subscription-manager register"
+      - "2. Verify registration: subscription-manager status"
+      - "3. Check repositories: dnf repolist"
+      - "4. Re-run playbook"
+      - ""
+      - "Note: You may need your Red Hat credentials"
+      - "=========================================="
+  when: sub_status is defined and sub_status.rc != 0
+
+- name: Log pre-check failure (disk space)
   ansible.builtin.lineinfile:
     path: "{{ log_file }}"
     line: "{{ ansible_date_time.iso8601 }} - Pre-check FAILED: Disk space {{ current_usage }} > max {{ max_allowed }}"
     create: true
+  when: disk_usage.stdout|int > disk_threshold
 
-- name: Stop execution
+- name: Log pre-check failure (subscription not registered)
+  ansible.builtin.lineinfile:
+    path: "{{ log_file }}"
+    line: "{{ ansible_date_time.iso8601 }} - Pre-check FAILED: System not registered to Subscription Manager ({{ repo_type | default('cdn') }})"
+    create: true
+  when: sub_status is defined and sub_status.rc != 0
+
+- name: Stop execution (disk space failure)
   ansible.builtin.fail:
     msg: "Stopping execution: Pre-check validation failed - insufficient disk space"
+  when: disk_usage.stdout|int > disk_threshold
+
+- name: Stop execution (subscription not registered)
+  ansible.builtin.fail:
+    msg: "Stopping execution: Pre-check validation failed - system not registered to Subscription Manager"
+  when: sub_status is defined and sub_status.rc != 0
